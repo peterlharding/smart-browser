@@ -1,8 +1,15 @@
-"""Engine and session handling."""
+"""Engine and session handling.
+
+The engine is created on first use rather than at import. Importing this module must not
+require a working configuration -- the test suite builds its own engine, and `alembic`
+needs to import the app to read settings before it has a database to talk to.
+"""
 
 from collections.abc import Iterator
+from functools import lru_cache
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
@@ -12,22 +19,25 @@ class Base(DeclarativeBase):
     pass
 
 
-_settings = get_settings()
+@lru_cache
+def get_engine() -> Engine:
+    return create_engine(
+        get_settings().database_url,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=10,
+        pool_timeout=20,
+    )
 
-engine = create_engine(
-    _settings.database_url,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=10,
-    pool_timeout=20,
-)
 
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+@lru_cache
+def get_sessionmaker() -> sessionmaker[Session]:
+    return sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
 
 
 def get_db() -> Iterator[Session]:
-    db = SessionLocal()
+    session = get_sessionmaker()()
     try:
-        yield db
+        yield session
     finally:
-        db.close()
+        session.close()

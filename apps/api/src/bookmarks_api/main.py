@@ -11,7 +11,7 @@ from fastapi import FastAPI
 
 from . import API_CONTRACT_VERSION, __version__
 from .config import get_settings
-from .db import engine
+from .db import get_engine
 from .routers import bookmarks, health, tags
 from .schema_guard import verify
 
@@ -25,7 +25,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     against an unstamped database -- it is not something to set by default.
     """
     if get_settings().schema_check:
-        verify(engine)
+        verify(get_engine())
     yield
 
 

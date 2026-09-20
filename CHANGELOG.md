@@ -11,6 +11,17 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Changed
 
+- **`DB_USER` is now required.** Left empty it built `postgresql+psycopg://:@…`, where
+  libpq falls back to the operating-system user — so migrations connected as whoever ran
+  them and, since Postgres assigns table ownership to whoever runs `CREATE TABLE`, left
+  every table owned by the wrong role. It succeeded, which is what made it worth an
+  exception. `database_url` now refuses to build without it and names the file to edit.
+- **`.env` is anchored to `apps/api/`** rather than resolved against the working
+  directory, so `alembic -c apps/api/alembic.ini` from the repo root no longer silently
+  finds nothing and falls back to every default.
+- Alembic prints the database and role it connected as before running any DDL.
+- The engine is created on first use rather than at import, so importing the app no longer
+  requires a working database configuration.
 - **The database is now called `page_history`**, and the default connection points at a
   stock local Postgres on 5432. The previous defaults — port 5436, database `bookmarks` —
   were the predecessor's Docker instance and its database, so a default `make migrate`

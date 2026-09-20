@@ -10,7 +10,7 @@
     "packages/*"
   ],
   "scripts": {
-    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\"",
+    "lint:md": "markdownlint-cli2 \\\"**/*.md\\\" \\\"#node_modules\\\" \\\"#**/node_modules\\\" \\\"#**/.venv\\\" \\\"#**/venv\\\" \\\"#**/dist\\\" \\\"#**/.git\\\"",
     "version:check": "python3 scripts/version.py check",
     "version:set": "python3 scripts/version.py set",
     "test:ext": "node --test apps/extension/test/*.test.js"

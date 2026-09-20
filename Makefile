@@ -38,8 +38,8 @@ version-set:  ## Set the version everywhere: make version-set VERSION=0.2.0
 	npm version $(VERSION) --no-git-tag-version --allow-same-version >/dev/null
 	@python3 scripts/version.py set $(VERSION)
 
-lint-md:  ## Lint every markdown file
-	npx --yes markdownlint-cli2 "**/*.md" "#node_modules"
+lint-md:  ## Lint every markdown file we wrote
+	npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#**/node_modules" "#**/.venv" "#**/venv" "#**/dist" "#**/.git"
 
 
 # --- tests ------------------------------------------------------------------

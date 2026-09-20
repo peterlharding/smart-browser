@@ -5,12 +5,23 @@ in particular the embedding dimension, which is still an open question (doc/plan
 """
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# apps/api -- the .env lives beside pyproject.toml, not wherever the process happens to
+# have been started. `env_file=".env"` resolves against the *current working directory*,
+# so running `alembic -c apps/api/alembic.ini upgrade head` from the repo root would
+# silently find no .env and fall back to every default.
+APP_ROOT = Path(__file__).resolve().parents[2]
+
+
+class ConfigurationError(RuntimeError):
+    """Settings are missing something there is no safe default for."""
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=APP_ROOT / ".env", extra="ignore")
 
     # Database.
     #
@@ -49,6 +60,21 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        """The connection URL, refusing to build one that connects as somebody unintended.
+
+        An empty user is not a harmless default. libpq treats it as unset and falls back
+        to the operating-system user, so the process connects as whoever ran it -- and
+        since Postgres assigns table ownership to the role that runs CREATE TABLE, a
+        migration run this way leaves every table owned by the wrong role. It succeeds,
+        which is what makes it worth an exception here.
+        """
+        if not self.db_user:
+            raise ConfigurationError(
+                f"DB_USER is not set, so a connection would be made as the operating-system "
+                f"user rather than a role you chose.\n"
+                f"Set DB_USER and DB_PASSWORD in {APP_ROOT / '.env'} "
+                f"(copy .env.example if it is not there yet)."
+            )
         return (
             f"postgresql+psycopg://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
