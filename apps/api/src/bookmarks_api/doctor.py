@@ -113,6 +113,24 @@ def main() -> int:
             print(f"\ndatabases on this server: (unavailable: {type(exc).__name__})")
 
         try:
+            types = conn.execute(
+                text(
+                    "SELECT t.typname, array_agg(e.enumlabel ORDER BY e.enumsortorder) "
+                    "FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid "
+                    "JOIN pg_namespace n ON n.oid = t.typnamespace "
+                    "WHERE n.nspname = 'public' GROUP BY t.typname ORDER BY t.typname"
+                )
+            ).all()
+            # A type outlives a hand-written table drop, and a database holding one with
+            # no tables is exactly the state a half-applied migration leaves behind.
+            print(f"\nenum types in this database: {len(types)}")
+            for name, labels in types:
+                print(f"    {name}  ({', '.join(labels)})")
+        except Exception as exc:  # noqa: BLE001
+            conn.rollback()
+            print(f"\nenum types: (unavailable: {type(exc).__name__})")
+
+        try:
             rows = conn.execute(
                 text(
                     "SELECT schemaname, tablename, tableowner FROM pg_tables "

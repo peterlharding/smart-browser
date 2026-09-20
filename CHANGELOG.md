@@ -11,6 +11,21 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **A half-applied database could never be migrated again.** `CREATE TYPE tag_source`
+  failed with "already exists" on every retry, because Postgres has no
+  `CREATE TYPE IF NOT EXISTS` and a type is not removed by dropping tables. It is now
+  created only when absent, accepted silently when its labels match, and **rejected
+  loudly** when they differ — re-runnable without being blind. Tables are deliberately
+  *not* idempotent: `CREATE TABLE IF NOT EXISTS` would accept a differently-shaped table
+  and hide real drift.
+- `make schema-drop CONFIRM=yes` resets a database to nothing, dropping `alembic_version`
+  as well. `db/schema/drop/drop_tables.sql` cannot do that itself — it runs as the
+  migration's downgrade body and alembic writes to that table immediately afterwards —
+  so without the separate drop, a reset would leave alembic believing `0001` was applied
+  and `make migrate` would be a silent no-op.
+- `make db-doctor` now lists enum types. A database holding a type and no tables is
+  precisely the state that produced this failure, and nothing reported it.
+
 - **`alembic upgrade head` required the API package to be installed.** `env.py` imported
   `bookmarks_api.config` for the database URL, so running it from a `db/`-only environment
   died with `ModuleNotFoundError`. The schema belongs to the project rather than to one

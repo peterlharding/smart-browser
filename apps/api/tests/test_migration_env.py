@@ -244,3 +244,29 @@ def test_no_setting_in_alembic_ini_is_relative_to_the_working_directory():
         "relative path(s) in alembic.ini, resolved against the working directory rather "
         f"than the file: {offenders}. Use %(here)s/."
     )
+
+
+def test_the_drop_script_leaves_alembic_version_alone():
+    """It is the downgrade body, and alembic writes to that table straight afterwards.
+
+    Dropping it there would break the very downgrade it implements. Resetting a database
+    to nothing is a different operation, and `make schema-drop` does it separately.
+    """
+    drop_sql = (SCHEMA_DIR / "drop" / "drop_tables.sql").read_text()
+    statements = _without_comments(drop_sql)
+    assert "alembic_version" not in statements, (
+        "drop_tables.sql must not drop alembic_version -- it runs as the downgrade"
+    )
+
+
+def test_the_enum_is_created_idempotently():
+    """Postgres has no CREATE TYPE IF NOT EXISTS, and a type survives a table drop.
+
+    A bare CREATE TYPE makes the migration impossible to re-run after any partial
+    failure, which is exactly what happened: `type "tag_source" already exists`.
+    """
+    sql = _without_comments((CREATE_DIR / "tag_source.sql").read_text())
+    assert "IF NOT EXISTS" in sql, "guard the creation"
+    assert "RAISE EXCEPTION" in sql, (
+        "an existing type with different labels must stop the migration, not be ignored"
+    )

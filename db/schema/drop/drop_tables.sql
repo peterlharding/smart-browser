@@ -8,6 +8,11 @@
 -- IF EXISTS throughout so a partial schema drops cleanly. No CASCADE: a dependency this
 -- file does not know about should stop the drop and be looked at, not be swept away.
 --
+-- alembic_version is deliberately absent. This file is the downgrade body, and alembic
+-- writes the new revision to that table immediately afterwards -- dropping it here would
+-- break the downgrade it implements. `make schema-drop` removes it separately, because
+-- resetting to nothing is a different operation from stepping back one revision.
+--
 
 \echo 'Drop table - bookmark_tag'
 DROP TABLE IF EXISTS bookmark_tag;

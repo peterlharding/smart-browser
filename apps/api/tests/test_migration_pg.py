@@ -315,3 +315,36 @@ def test_identity_columns_refuse_an_explicit_id(migrated):
     assert session.execute(
         text("SELECT count(*) FROM app_user WHERE id = 9999")
     ).scalar_one() == 1
+
+
+def test_the_migration_survives_a_leftover_enum_type(pg_url, migrated):
+    """Re-running after a partial teardown must work.
+
+    The failure this covers: tables dropped by hand, `tag_source` left behind because
+    nothing drops a type implicitly, and every subsequent `alembic upgrade head` dying on
+    `type "tag_source" already exists`.
+    """
+    from alembic import command
+
+    session, engine = migrated
+
+    # Leave the database in exactly that state: schema gone, type still there.
+    drop_sql = (
+        ALEMBIC_INI.parent / "schema" / "drop" / "drop_tables.sql"
+    ).read_text()
+    statements = "\n".join(
+        line for line in drop_sql.splitlines() if not line.lstrip().startswith("\\")
+    ).replace("DROP TYPE IF EXISTS tag_source;", "")
+    session.execute(text(statements))
+    session.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    session.commit()
+
+    leftover = session.execute(
+        text("SELECT count(*) FROM pg_type WHERE typname = 'tag_source'")
+    ).scalar_one()
+    assert leftover == 1, "the fixture for this test did not leave the type behind"
+
+    command.upgrade(alembic_config(pg_url), "head")
+
+    present = set(inspect(engine).get_table_names())
+    assert set(TABLES) <= present, "upgrade must succeed over a leftover type"

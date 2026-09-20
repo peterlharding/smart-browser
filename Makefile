@@ -43,7 +43,7 @@ install:
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
         api-lint api-openapi test test-api test-scripts test-ext test-pg \
         migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
-        db-connect db-doctor
+        db-connect db-doctor schema-drop
 
 
 # --- the release gate -------------------------------------------------------
@@ -123,6 +123,19 @@ migrate-autogen:  ## Revision diffed against the models; needs the API environme
 migrate-stamp:  ## Record a revision as applied WITHOUT running it
 	@test -n "$(REV)" || { echo "usage: make migrate-stamp REV=0001"; exit 1; }
 	$(ALEMBIC) stamp $(REV)
+
+schema-drop:  ## DESTRUCTIVE. Drop every schema object: make schema-drop CONFIRM=yes
+	@test "$(CONFIRM)" = "yes" || { \
+	  echo "This drops every table and type in the configured database."; \
+	  echo "Re-run with CONFIRM=yes if that is what you want."; exit 1; }
+	@set -a; . .env; set +a; \
+	  PGPASSWORD="$$DB_PASSWORD" psql -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" \
+	    -d "$$DB_NAME" -v ON_ERROR_STOP=1 \
+	    -f db/schema/drop/drop_tables.sql \
+	    -c 'DROP TABLE IF EXISTS alembic_version'
+	@echo
+	@echo "Dropped, including alembic_version -- without that, alembic would still think"
+	@echo "0001 was applied and 'make migrate' would be a silent no-op. Run it now."
 
 db-doctor:  ## Show which database the settings actually reach, and what is in it
 	cd apps/api && uv run python -m bookmarks_api.doctor
