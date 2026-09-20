@@ -9,6 +9,10 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-20
+
+First release. See [release_notes/v0.1.0.md](release_notes/v0.1.0.md) for details.
+
 ### Added
 
 - Monorepo layout: `apps/api` (FastAPI), `apps/browser` (Electron, placeholder),
@@ -41,4 +45,5 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
   enforced version across `package.json`, `pyproject.toml` and `__init__.py`, `make check`
   as the release gate, and a CI workflow running the same checks.
 
-[Unreleased]: https://github.com/peterlharding/smart-browser/commits/main
+[Unreleased]: https://github.com/peterlharding/smart-browser/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/peterlharding/smart-browser/releases/tag/v0.1.0

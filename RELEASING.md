@@ -38,7 +38,7 @@ reason to agree with each other:
 - `__version__` in `apps/api/src/bookmarks_api/__init__.py` — what `/api/v2/health` reports.
 - `version` in `apps/browser/package.json` (from M5).
 - `CHANGELOG.md` at the repo root, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-- `release_notes/<version>.md`, one user-facing file per release.
+- `release_notes/v<version>.md`, one user-facing file per release.
 - The git tag `v<version>` (annotated).
 
 Do not edit the first four by hand. `scripts/version.py` writes them together and
@@ -61,10 +61,10 @@ release cannot be cut with an API that reports the wrong version.
 3. **Cut the changelog.** In `CHANGELOG.md`:
    - Move the items under `## [Unreleased]` into a new `## [<version>] - YYYY-MM-DD` section (today's date).
    - Leave a fresh, empty `## [Unreleased]` at the top.
-   - Add a `See [release_notes/<version>.md](release_notes/<version>.md) for details.` line under the new heading.
+   - Add a `See [release_notes/v<version>.md](release_notes/v<version>.md) for details.` line under the new heading.
    - Update the link references at the bottom of the file: point `[Unreleased]` at `compare/v<version>...HEAD` and add a `[<version>]` tag link.
 
-4. **Write the release notes** at `release_notes/<version>.md`.
+4. **Write the release notes** at `release_notes/v<version>.md`.
    See `release_notes/README.md` for the structure: a short intro, Highlights, any Fixed section, and Under the hood.
 
 5. **Run every check** and confirm there are no warnings and no failures:
@@ -126,7 +126,7 @@ release cannot be cut with an API that reports the wrong version.
 
     ```sh
     gh release create v<version> --title "Smart-Browser <version>" \
-      --notes-file release_notes/<version>.md
+      --notes-file release_notes/v<version>.md
     ```
 
     Treat creating a release as a one-shot.

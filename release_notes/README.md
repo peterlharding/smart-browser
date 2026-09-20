@@ -1,6 +1,6 @@
 # Release notes
 
-One file per release, named `<version>.md`, written for a reader who wants to know what
+One file per release, named `v<version>.md`, written for a reader who wants to know what
 changed and why rather than which commits landed.
 
 Structure:
