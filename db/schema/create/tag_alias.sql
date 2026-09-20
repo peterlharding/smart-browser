@@ -10,7 +10,7 @@
 
 CREATE TABLE tag_alias (
     alias   text     NOT NULL,
-    tag_id  integer  NOT NULL,
+    tag_id  bigint   NOT NULL,
 
     CONSTRAINT tag_alias_pkey PRIMARY KEY (alias),
     CONSTRAINT tag_alias_tag_id_fkey FOREIGN KEY (tag_id)

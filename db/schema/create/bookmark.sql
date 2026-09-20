@@ -7,7 +7,8 @@
 --
 
 CREATE TABLE bookmark (
-    id             SERIAL       PRIMARY KEY,
+    id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
     url            text         NOT NULL,
     -- sha256 of the normalised URL. The UNIQUE below is the entire no-duplicates
     -- guarantee: saving the same page twice cannot produce two rows, whatever the client

@@ -15,11 +15,13 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     Enum,
     Float,
     ForeignKey,
+    Identity,
     Integer,
     LargeBinary,
     String,
@@ -51,6 +53,23 @@ class TagSource(enum.Enum):
     # where `enum.StrEnum` does not exist.
 
 
+# The schema files declare `bigint GENERATED ALWAYS AS IDENTITY`. Two details have to be
+# mirrored here rather than approximated.
+#
+# `with_variant(Integer, "sqlite")`: SQLite auto-assigns only for INTEGER PRIMARY KEY,
+# which is an alias for the rowid. A BIGINT primary key there is an ordinary column, and
+# an insert that omits it fails -- which would take the whole fast test suite with it.
+#
+# `Identity(always=True)`: not `autoincrement`, and not a SERIAL default. GENERATED ALWAYS
+# refuses an explicit id outright, so nothing can quietly assign one and desynchronise the
+# sequence. Nothing in this codebase does; the constraint keeps it that way.
+BigId = BigInteger().with_variant(Integer, "sqlite")
+
+
+def _pk() -> Mapped[int]:
+    return mapped_column(BigId, Identity(always=True), primary_key=True)
+
+
 def _now() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -61,7 +80,7 @@ def _now() -> Mapped[datetime]:
 class AppUser(Base):
     __tablename__ = "app_user"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = _pk()
     display_name: Mapped[str | None] = mapped_column(Text)
     # Informational only. Identity is keyed on (provider, provider_subject) -- never on
     # email, which providers let people change and which makes account linking a
@@ -90,7 +109,7 @@ class UserIdentity(Base):
     provider: Mapped[str] = mapped_column(String(32), primary_key=True)
     provider_subject: Mapped[str] = mapped_column(String(255), primary_key=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("app_user.id", ondelete="CASCADE"), nullable=False, index=True
+        BigId, ForeignKey("app_user.id", ondelete="CASCADE"), nullable=False, index=True
     )
     email_at_link: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
@@ -104,7 +123,7 @@ class UserIdentity(Base):
 class Bookmark(Base):
     __tablename__ = "bookmark"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = _pk()
     url: Mapped[str] = mapped_column(Text, nullable=False)
     # sha256 of the normalised URL. UNIQUE, and that constraint is the whole duplication
     # guarantee: saving the same page twice cannot produce two rows, whatever the client
@@ -129,12 +148,12 @@ class UserBookmark(Base):
     __tablename__ = "user_bookmark"
     __table_args__ = (UniqueConstraint("user_id", "bookmark_id", name="user_bookmark_uniq"),)
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = _pk()
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("app_user.id", ondelete="CASCADE"), nullable=False, index=True
+        BigId, ForeignKey("app_user.id", ondelete="CASCADE"), nullable=False, index=True
     )
     bookmark_id: Mapped[int] = mapped_column(
-        ForeignKey("bookmark.id", ondelete="CASCADE"), nullable=False, index=True
+        BigId, ForeignKey("bookmark.id", ondelete="CASCADE"), nullable=False, index=True
     )
     # Your title beats the crawled one, without overwriting it for everyone else.
     title_override: Mapped[str | None] = mapped_column(Text)
@@ -170,11 +189,11 @@ class UserBookmark(Base):
 class Tag(Base):
     __tablename__ = "tag"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = _pk()
     # Always stored lowercase, enforced on every write path -- which is why a plain
     # UNIQUE is enough and the schema needs no citext extension (ADR 0006).
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    parent_id: Mapped[int | None] = mapped_column(ForeignKey("tag.id", ondelete="SET NULL"))
+    parent_id: Mapped[int | None] = mapped_column(BigId, ForeignKey("tag.id", ondelete="SET NULL"))
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
 
@@ -195,7 +214,7 @@ class TagAlias(Base):
 
     alias: Mapped[str] = mapped_column(Text, primary_key=True)
     tag_id: Mapped[int] = mapped_column(
-        ForeignKey("tag.id", ondelete="CASCADE"), nullable=False, index=True
+        BigId, ForeignKey("tag.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     tag: Mapped[Tag] = relationship()
@@ -205,10 +224,10 @@ class BookmarkTag(Base):
     __tablename__ = "bookmark_tag"
 
     user_bookmark_id: Mapped[int] = mapped_column(
-        ForeignKey("user_bookmark.id", ondelete="CASCADE"), primary_key=True
+        BigId, ForeignKey("user_bookmark.id", ondelete="CASCADE"), primary_key=True
     )
     tag_id: Mapped[int] = mapped_column(
-        ForeignKey("tag.id", ondelete="CASCADE"), primary_key=True, index=True
+        BigId, ForeignKey("tag.id", ondelete="CASCADE"), primary_key=True, index=True
     )
     source: Mapped[TagSource] = mapped_column(
         Enum(TagSource, name="tag_source", values_callable=lambda e: [m.value for m in e]),

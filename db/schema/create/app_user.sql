@@ -3,7 +3,8 @@
 --
 
 CREATE TABLE app_user (
-    id            SERIAL       PRIMARY KEY,
+    id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
     display_name  text,
     -- Informational only. Identity is keyed on (provider, provider_subject) in
     -- user_identity -- never on email, which providers let people change, and which

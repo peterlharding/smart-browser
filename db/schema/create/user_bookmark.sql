@@ -6,9 +6,11 @@
 --
 
 CREATE TABLE user_bookmark (
-    id               SERIAL       PRIMARY KEY,
-    user_id          integer      NOT NULL,
-    bookmark_id      integer      NOT NULL,
+    id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    user_id          bigint      NOT NULL,
+    bookmark_id      bigint      NOT NULL,
+
     -- Your title beats the crawled one, without overwriting it for anyone else.
     title_override   text,
     notes            text,

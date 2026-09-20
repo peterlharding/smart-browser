@@ -7,9 +7,10 @@
 --
 
 CREATE TABLE tag (
-    id           SERIAL       PRIMARY KEY,
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
     name         text         NOT NULL,
-    parent_id    integer,
+    parent_id    bigint,
     description  text,
     created_at   timestamptz  NOT NULL DEFAULT now(),
 

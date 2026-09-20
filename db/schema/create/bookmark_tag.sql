@@ -6,8 +6,9 @@
 --
 
 CREATE TABLE bookmark_tag (
-    user_bookmark_id  integer      NOT NULL,
-    tag_id            integer      NOT NULL,
+    user_bookmark_id  bigint      NOT NULL,
+    tag_id            bigint      NOT NULL,
+
     source            tag_source   NOT NULL DEFAULT 'user',
     -- NULL for a tag a person chose. Set for a machine suggestion, so the UI can show it
     -- as provisional and a bulk accept or reject is a query rather than a migration.

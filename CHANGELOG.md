@@ -31,6 +31,12 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Changed
 
+- **Surrogate keys are `bigint GENERATED ALWAYS AS IDENTITY`**, replacing `SERIAL`
+  integers. `ALWAYS` rather than `BY DEFAULT`: an explicit id written past the sequence
+  leaves it behind the data, and the next generated value collides. The models mirror it
+  with `Identity(always=True)` and a `with_variant(Integer, "sqlite")` so the SQLite test
+  suite keeps auto-assigning — a `BIGINT` primary key is not a rowid alias there, and
+  inserts omitting it would fail.
 - **The schema is now explicit SQL**, one object per file in `db/schema/create/`, with
   `create_tables.sql` as the ordered manifest that both psql and the Alembic revision
   read — so the ordering exists once. `db/schema/drop/drop_tables.sql` is the downgrade.

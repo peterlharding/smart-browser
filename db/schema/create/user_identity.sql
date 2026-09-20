@@ -8,7 +8,7 @@
 CREATE TABLE user_identity (
     provider          varchar(32)   NOT NULL,
     provider_subject  varchar(255)  NOT NULL,
-    user_id           integer       NOT NULL,
+    user_id           bigint        NOT NULL,
     email_at_link     text,
     created_at        timestamptz   NOT NULL DEFAULT now(),
 
