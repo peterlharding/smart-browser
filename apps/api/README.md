@@ -26,12 +26,20 @@ What it gives you:
 
 ```sh
 createdb page_history -O api          # its own database, owned by the role that will use it
-cp .env.example .env                  # then set DB_USER, DB_PASSWORD, API_TOKENS
+cp .env.example ../../.env            # or apps/api/.env; both are read
 
-make -C ../.. api-install
+make -C ../.. api-install             # uv sync
 make -C ../.. migrate                 # creates the schema
 make -C ../.. api-dev                 # http://127.0.0.1:8000/api/v2/docs
 ```
+
+Dependencies are managed with [uv](https://docs.astral.sh/uv/). `uv.lock` is committed and
+is what CI installs (`--frozen`, so a lockfile out of step with `pyproject.toml` fails the
+build rather than quietly resolving something else). Dev tools live in a PEP 735
+`[dependency-groups]` rather than an optional extra, so plain `uv sync` installs them.
+
+`uv run` syncs before it runs, so every `make` target works from a clean checkout without
+an install step — `make api-install` exists for when you want the sync on its own.
 
 Generate a token:
 
@@ -41,10 +49,20 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## Configuration
 
-Everything lives in **`apps/api/.env`** — copy `.env.example`. It is read relative to that
-directory, not to wherever you started the process, so `alembic -c apps/api/alembic.ini`
-run from the repo root picks up the same settings as `make migrate`. Real environment
-variables override the file.
+Two `.env` files are read, both by absolute path so it makes no difference which
+directory you run from — `alembic -c apps/api/alembic.ini` from the repo root picks up
+exactly what `make migrate` does:
+
+| File | For |
+| --- | --- |
+| `<repo root>/.env` | Project-wide values shared by everything in the monorepo |
+| `apps/api/.env` | API-specific overrides. Optional |
+
+Later wins, so `apps/api/.env` overrides the root. Real environment variables beat both.
+A single root `.env` is usually all you want; `apps/api/.env.example` is the template for
+the API's share of it.
+
+Both are gitignored. They hold a password — keep it that way.
 
 | Variable | Notes |
 | --- | --- |
@@ -132,6 +150,8 @@ Check with `\dt`, `\ds` and `\dT` — the Owner column should read `api` through
 ```sh
 make -C ../.. test      # 97 API + 41 extension + 12 tooling, no infrastructure
 ```
+
+Or directly: `uv run pytest` from `apps/api`.
 
 The default suite runs against **SQLite in memory** — no Docker, no database to start, no
 skips. Everything in `models.py` is plain SQLAlchemy, so the schema builds and the real

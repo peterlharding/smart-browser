@@ -9,11 +9,16 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# apps/api -- the .env lives beside pyproject.toml, not wherever the process happens to
-# have been started. `env_file=".env"` resolves against the *current working directory*,
-# so running `alembic -c apps/api/alembic.ini upgrade head` from the repo root would
-# silently find no .env and fall back to every default.
-APP_ROOT = Path(__file__).resolve().parents[2]
+# Absolute paths, not relative ones. `env_file=".env"` resolves against the *current
+# working directory*, so `alembic -c apps/api/alembic.ini` run from the repo root would
+# find nothing and fall back to every default -- silently, because a missing .env is not
+# an error.
+APP_ROOT = Path(__file__).resolve().parents[2]  # apps/api
+REPO_ROOT = APP_ROOT.parents[1]  # the monorepo root
+
+# Both are read, repo root first. A root .env holds what the whole project shares; an
+# apps/api one overrides it for this service. Real environment variables beat both.
+ENV_FILES = (REPO_ROOT / ".env", APP_ROOT / ".env")
 
 
 class ConfigurationError(RuntimeError):
@@ -21,7 +26,11 @@ class ConfigurationError(RuntimeError):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=APP_ROOT / ".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=ENV_FILES,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # Database.
     #
@@ -69,11 +78,16 @@ class Settings(BaseSettings):
         which is what makes it worth an exception here.
         """
         if not self.db_user:
+            searched = "\n".join(
+                f"  {path}{'' if path.exists() else '   (not present)'}"
+                for path in ENV_FILES
+            )
             raise ConfigurationError(
-                f"DB_USER is not set, so a connection would be made as the operating-system "
-                f"user rather than a role you chose.\n"
-                f"Set DB_USER and DB_PASSWORD in {APP_ROOT / '.env'} "
-                f"(copy .env.example if it is not there yet)."
+                "DB_USER is not set, so a connection would be made as the operating-system "
+                "user rather than a role you chose.\n"
+                "Set DB_USER and DB_PASSWORD in one of:\n"
+                f"{searched}\n"
+                "The second overrides the first; copy apps/api/.env.example for a template."
             )
         return (
             f"postgresql+psycopg://{self.db_user}:{self.db_password}"

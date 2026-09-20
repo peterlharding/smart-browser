@@ -11,19 +11,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
+      # --frozen: fail if uv.lock does not match pyproject.toml rather than silently
+      # resolving something else. CI must test what the lockfile describes.
       - name: Install API
-        run: |
-          python -m venv apps/api/.venv
-          apps/api/.venv/bin/pip install --upgrade pip
-          apps/api/.venv/bin/pip install -e 'apps/api[dev]'
+        run: make api-install UV="uv --project apps/api --frozen"
 
       - name: Check version consistency
         run: make version-check
@@ -71,15 +71,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
 
       - name: Install API
-        run: |
-          python -m venv apps/api/.venv
-          apps/api/.venv/bin/pip install --upgrade pip
-          apps/api/.venv/bin/pip install -e 'apps/api[dev]'
+        run: uv --project apps/api sync --frozen
 
       - name: Postgres suite
         env:

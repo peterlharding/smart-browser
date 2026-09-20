@@ -11,14 +11,24 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Changed
 
+- **Python tooling moved to [uv](https://docs.astral.sh/uv/)**, matching how these
+  projects are built elsewhere. `uv.lock` is committed and CI installs from it with
+  `--frozen`, so a lockfile out of step with `pyproject.toml` fails the build instead of
+  resolving something else. Dev tools moved from an optional extra to a PEP 735
+  `[dependency-groups]`, which plain `uv sync` installs. Every `make` target now runs
+  through `uv run`, which syncs first — so they work from a clean checkout.
+- Added `make db-connect`, which reads `apps/api/.env` rather than hardcoding a host,
+  port and role that now live in one place.
 - **`DB_USER` is now required.** Left empty it built `postgresql+psycopg://:@…`, where
   libpq falls back to the operating-system user — so migrations connected as whoever ran
   them and, since Postgres assigns table ownership to whoever runs `CREATE TABLE`, left
   every table owned by the wrong role. It succeeded, which is what made it worth an
   exception. `database_url` now refuses to build without it and names the file to edit.
-- **`.env` is anchored to `apps/api/`** rather than resolved against the working
-  directory, so `alembic -c apps/api/alembic.ini` from the repo root no longer silently
-  finds nothing and falls back to every default.
+- **`.env` is read by absolute path**, not resolved against the working directory, so
+  `alembic -c apps/api/alembic.ini` from the repo root no longer silently finds nothing
+  and falls back to every default. Two files are read — `<repo root>/.env` for what the
+  monorepo shares and `apps/api/.env` for API-specific overrides — with the latter
+  winning and real environment variables beating both.
 - Alembic prints the database and role it connected as before running any DDL.
 - The engine is created on first use rather than at import, so importing the app no longer
   requires a working database configuration.

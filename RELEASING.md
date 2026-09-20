@@ -73,6 +73,8 @@ release cannot be cut with an API that reports the wrong version.
    make check   # version sync, markdown lint, ruff, mypy, pytest
    ```
 
+   `make check` runs everything through `uv`, which syncs the environment from `uv.lock` first — so a stale lockfile shows up here rather than in CI.
+
    The default test run needs no database: the API suite runs against SQLite in memory.
    Before a release, also run the Postgres suite against a scratch database, because it
    covers the id allocation and migration behaviour SQLite cannot:
@@ -157,4 +159,5 @@ Architecture decisions go in `doc/decisions/` as numbered ADRs, committed with `
 - Keep one commit per release (`Release <version>`) so each tag anchors to a distinct, accurate point in history.
 - Build output (`dist/`, `out/`, `.venv/`) is gitignored. Nothing it produces is committed.
 - Database migrations are **not** part of the version scheme. A release does not have a "schema version"; it has a required Alembic revision, recorded in `schema_guard.py` and checked at startup.
+- `apps/api/uv.lock` **is** committed, and CI installs from it with `--frozen`. Changing a dependency means committing the regenerated lockfile in the same change.
 - `packages/shared-types/openapi.json` **is** committed: it is generated, but it is also the contract the browser client is built from, so a diff against it in review is the signal that an API change is breaking. Regenerate it with `make api-openapi` whenever routes or schemas change.

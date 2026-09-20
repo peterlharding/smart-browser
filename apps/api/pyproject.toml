@@ -17,7 +17,10 @@ dependencies = [
     "tldextract>=5.3",   # top_domain_under_public_suffix; registered_domain deprecated
 ]
 
-[project.optional-dependencies]
+# PEP 735 dependency group rather than an optional extra: these are development tools,
+# not a published feature of the package, and `uv sync` installs the dev group by default
+# where an extra would need `--extra dev` every time.
+[dependency-groups]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
