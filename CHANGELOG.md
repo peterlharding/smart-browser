@@ -11,6 +11,15 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **`make db-connect` printed the database password.** `DB_PASSWORD` was a make variable
+  and the recipe was not silenced, so make echoed the line with the value already
+  substituted — into the terminal, the scrollback, and any log. The password is no longer
+  a make variable at all; the recipes read it in the shell, where make never sees it.
+- `make test-pg` refuses a `TEST_DATABASE_URL` pointing at the configured database. That
+  suite creates and drops tables, and checking only that the variable was *set* is not a
+  guard — the dangerous value is the one aimed at real data. It also now prints the
+  `createdb` line needed to make a scratch one.
+
 - **A half-applied database could never be migrated again.** `CREATE TYPE tag_source`
   failed with "already exists" on every retry, because Postgres has no
   `CREATE TYPE IF NOT EXISTS` and a type is not removed by dropping tables. It is now

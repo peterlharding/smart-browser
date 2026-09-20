@@ -5,7 +5,10 @@ API_PORT     := $(shell grep -s API_PORT=      .env | sed 's/.*=//')
 DB_HOST      := $(shell grep -s DB_HOST=       .env | sed 's/.*=//')
 DB_PORT      := $(shell grep -s DB_PORT=       .env | sed 's/.*=//')
 DB_USER      := $(shell grep -s DB_USER=       .env | sed 's/.*=//')
-DB_PASSWORD  := $(shell grep -s DB_PASSWORD=   .env | sed 's/.*=//')
+# DB_PASSWORD is deliberately NOT a make variable. Make echoes recipes with variables
+# already substituted, so a single un-@'d line puts the password in the terminal, the
+# scrollback, and any CI log. The recipes below read it in the shell instead, where make
+# never sees it.
 DB_NAME      := $(shell grep -s DB_NAME=       .env | sed 's/.*=//')
 
 # All Python work goes through uv: it resolves the interpreter, keeps .venv in step
@@ -77,9 +80,18 @@ test-scripts:  ## Tests for the release tooling
 test-ext:  ## Extension suite (node --test, no dependencies)
 	node --test apps/extension/test/*.test.js
 
-test-pg:  ## Run the Postgres suite (needs TEST_DATABASE_URL)
+test-pg:  ## Run the Postgres suite (needs TEST_DATABASE_URL; creates and drops tables)
 	@test -n "$(TEST_DATABASE_URL)" || \
-	  { echo "TEST_DATABASE_URL is not set -- and must NOT point at the real database"; exit 1; }
+	  { echo "TEST_DATABASE_URL is not set."; \
+	    echo "It needs a scratch database -- this suite creates and drops tables:"; \
+	    echo "    createdb ${DB_NAME}_test -O ${DB_USER}"; \
+	    echo "    make test-pg TEST_DATABASE_URL=postgresql+psycopg://${DB_USER}:PASSWORD@${DB_HOST}:${DB_PORT}/${DB_NAME}_test"; \
+	    exit 1; }
+	@case "$(TEST_DATABASE_URL)" in \
+	  */${DB_NAME}|*/${DB_NAME}\?*) \
+	    echo "REFUSING: TEST_DATABASE_URL points at ${DB_NAME}, which is your real database."; \
+	    echo "This suite drops tables. Use a scratch database."; exit 1;; \
+	esac
 	cd apps/api && TEST_DATABASE_URL="$(TEST_DATABASE_URL)" uv run pytest -m postgres -q
 
 # --- api --------------------------------------------------------------------
@@ -140,8 +152,9 @@ schema-drop:  ## DESTRUCTIVE. Drop every schema object: make schema-drop CONFIRM
 db-doctor:  ## Show which database the settings actually reach, and what is in it
 	cd apps/api && uv run python -m bookmarks_api.doctor
 
-db-connect:  ## psql into the database using the values in apps/api/.env
-	  PGPASSWORD=${DB_PASSWORD} psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} ${DB_NAME}
+db-connect:  ## psql into the database using the values in .env
+	@set -a; . ./.env; set +a; \
+	  PGPASSWORD="$$DB_PASSWORD" psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} ${DB_NAME}
 
 
 # -----------------------------------------------------------------------------
