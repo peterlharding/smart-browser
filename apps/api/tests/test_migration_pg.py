@@ -169,3 +169,107 @@ def test_downgrade_removes_everything(pg_url):
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
     engine.dispose()
+
+
+# --- the two sources of truth must agree ------------------------------------
+
+
+def test_sql_files_and_models_describe_the_same_schema(pg_url, migrated):
+    """The schema is now stated twice: in db/schema/create/*.sql and in models.py.
+
+    Both are deliberate -- the SQL is what runs, the models are what the ORM and the
+    SQLite test suite use -- but two sources of truth drift, silently, and the failure
+    surfaces as a query that works in tests and breaks in production. This diffs them.
+
+    It caught three real differences when the SQL files were introduced: `is_active`,
+    `visit_count` and `source` had Python-side defaults in the models and server defaults
+    in the SQL. A Python default only applies when the ORM does the insert, so raw SQL and
+    `INSERT ... ON CONFLICT` would have written NULL into NOT NULL columns.
+    """
+    from sqlalchemy import create_engine, inspect
+
+    from bookmarks_api.db import Base
+
+    session, migrated_engine = migrated
+
+    mirror_url = pg_url.rsplit("/", 1)[0] + "/page_history_models_mirror"
+    admin = create_engine(pg_url.replace("+psycopg", "+psycopg"), isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text("DROP DATABASE IF EXISTS page_history_models_mirror"))
+        conn.execute(text("CREATE DATABASE page_history_models_mirror"))
+    admin.dispose()
+
+    mirror = create_engine(mirror_url)
+    try:
+        Base.metadata.create_all(mirror)
+        differences = _diff(inspect(migrated_engine), inspect(mirror))
+    finally:
+        mirror.dispose()
+        admin = create_engine(pg_url, isolation_level="AUTOCOMMIT")
+        with admin.connect() as conn:
+            conn.execute(text("DROP DATABASE IF EXISTS page_history_models_mirror"))
+        admin.dispose()
+
+    assert not differences, "SQL files and models disagree:\n  " + "\n  ".join(differences)
+
+
+def _fk_key(fk: dict) -> tuple:
+    return (
+        tuple(fk["constrained_columns"]),
+        fk["referred_table"],
+        tuple(fk["referred_columns"]),
+        (fk.get("options") or {}).get("ondelete"),
+    )
+
+
+def _diff(from_sql, from_models) -> list[str]:
+    """Structural differences between two inspected schemas, as readable lines."""
+    out: list[str] = []
+
+    sql_tables = set(from_sql.get_table_names()) - {"alembic_version"}
+    model_tables = set(from_models.get_table_names())
+    for name in sorted(sql_tables - model_tables):
+        out.append(f"table {name}: in the SQL files but not the models")
+    for name in sorted(model_tables - sql_tables):
+        out.append(f"table {name}: in the models but not the SQL files")
+
+    for table in sorted(sql_tables & model_tables):
+        a = {c["name"]: c for c in from_sql.get_columns(table)}
+        b = {c["name"]: c for c in from_models.get_columns(table)}
+        for column in sorted(a.keys() | b.keys()):
+            if column not in a:
+                out.append(f"{table}.{column}: only in the models")
+                continue
+            if column not in b:
+                out.append(f"{table}.{column}: only in the SQL files")
+                continue
+            for attr in ("type", "nullable"):
+                if str(a[column][attr]) != str(b[column][attr]):
+                    out.append(
+                        f"{table}.{column} {attr}: sql={a[column][attr]!s} "
+                        f"models={b[column][attr]!s}"
+                    )
+            # Strip the cast Postgres adds when reflecting, so 'user'::tag_source and
+            # 'user' compare equal.
+            da = (a[column].get("default") or "").split("::")[0].strip("'")
+            db_ = (b[column].get("default") or "").split("::")[0].strip("'")
+            if da != db_:
+                out.append(f"{table}.{column} default: sql={da!r} models={db_!r}")
+
+        if (
+            from_sql.get_pk_constraint(table)["constrained_columns"]
+            != from_models.get_pk_constraint(table)["constrained_columns"]
+        ):
+            out.append(f"{table}: primary key differs")
+
+        ua = sorted(tuple(u["column_names"]) for u in from_sql.get_unique_constraints(table))
+        ub = sorted(tuple(u["column_names"]) for u in from_models.get_unique_constraints(table))
+        if ua != ub:
+            out.append(f"{table}: unique constraints sql={ua} models={ub}")
+
+        fa = sorted(_fk_key(f) for f in from_sql.get_foreign_keys(table))
+        fb = sorted(_fk_key(f) for f in from_models.get_foreign_keys(table))
+        if fa != fb:
+            out.append(f"{table}: foreign keys sql={fa} models={fb}")
+
+    return out

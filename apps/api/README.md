@@ -196,7 +196,52 @@ requires a clean run. The third-party deprecations we cannot fix are listed expl
 
 ## Migrations
 
-Alembic, in `db/migrations/` at the repo root — the schema belongs to the project, not to this service. Revision `0001` creates the whole schema on an empty database.
+Alembic, in `db/migrations/` at the repo root — the schema belongs to the project, not to
+this service.
+
+**The DDL is SQL, not Python.** It lives one object per file in `db/schema/create/`, with
+`create_tables.sql` as the ordered manifest. Revision `0001` parses that manifest and runs
+each file it names, so there is one ordering rather than two that can drift:
+
+```text
+db/schema/
+├── create/
+│   ├── create_tables.sql   ordered manifest: \echo + \ir, runnable under psql
+│   ├── tag_source.sql      the enum, first — the tables depend on it
+│   ├── app_user.sql
+│   └── …
+└── drop/
+    └── drop_tables.sql     reverse order, used by the downgrade
+```
+
+It runs under psql directly, which is the point of keeping it as SQL:
+
+```sh
+psql "$DATABASE_URL" -f db/schema/create/create_tables.sql
+```
+
+`\ir` rather than `\i`: `\i` resolves relative to psql's working directory, `\ir`
+relative to the file doing the including. The difference is whether running it from the
+repo root works.
+
+Two deliberate departures from the convention used elsewhere. The create files carry **no
+`DROP TABLE IF EXISTS`** — idempotent rebuild is right when building from nothing and is
+silent data loss on a migration's upgrade path, so drops live in `schema/drop/`. And the
+revision **refuses** any psql meta-command it does not implement rather than skipping it,
+because a skipped meta-command is DDL silently not run.
+
+### Two sources of truth
+
+The schema is now stated twice: in these SQL files and in `models.py`. Both earn their
+place — the SQL is what runs against Postgres, the models are what the ORM and the SQLite
+test suite use — but two sources drift. `test_sql_files_and_models_describe_the_same_schema`
+in the Postgres suite builds both and diffs columns, types, nullability, defaults, primary
+keys, unique constraints and foreign keys.
+
+It earned its keep immediately: `is_active`, `visit_count` and `source` had Python-side
+defaults in the models and server defaults in the SQL. A Python default only applies when
+the ORM does the insert, so raw SQL and `INSERT ... ON CONFLICT` would have written NULL
+into NOT NULL columns.
 
 ```sh
 make -C ../.. migrate-status   # what the database is at vs what the code wants

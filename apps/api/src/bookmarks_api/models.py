@@ -26,6 +26,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -69,7 +70,11 @@ class AppUser(Base):
     avatar_url: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # server_default, not just default: a Python-side default only applies when the
+    # ORM does the insert. The schema files carry it, and the two must agree.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
 
     identities: Mapped[list[UserIdentity]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -137,7 +142,9 @@ class UserBookmark(Base):
     saved_from: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = _now()
     last_visited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    visit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    visit_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     bookmark: Mapped[Bookmark] = relationship(lazy="joined")
@@ -207,6 +214,7 @@ class BookmarkTag(Base):
         Enum(TagSource, name="tag_source", values_callable=lambda e: [m.value for m in e]),
         nullable=False,
         default=TagSource.USER,
+        server_default=text("'user'"),
     )
     # NULL for tags a person chose. Set for machine suggestions, so the UI can show them
     # as provisional and a bulk accept/reject is a query rather than a migration.

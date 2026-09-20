@@ -31,6 +31,15 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Changed
 
+- **The schema is now explicit SQL**, one object per file in `db/schema/create/`, with
+  `create_tables.sql` as the ordered manifest that both psql and the Alembic revision
+  read — so the ordering exists once. `db/schema/drop/drop_tables.sql` is the downgrade.
+  Create files carry no `DROP`, and the revision refuses any psql meta-command it cannot
+  run rather than skipping it.
+- Server defaults added to `is_active`, `visit_count` and `bookmark_tag.source`. They had
+  Python-side defaults only, which apply when the ORM inserts and not when anything else
+  does — including this API's own `INSERT ... ON CONFLICT` statements.
+
 - **Python tooling moved to [uv](https://docs.astral.sh/uv/)**, matching how these
   projects are built elsewhere. `uv.lock` is committed and CI installs from it with
   `--frozen`, so a lockfile out of step with `pyproject.toml` fails the build instead of
