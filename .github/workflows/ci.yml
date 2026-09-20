@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install API
+        run: |
+          python -m venv apps/api/.venv
+          apps/api/.venv/bin/pip install --upgrade pip
+          apps/api/.venv/bin/pip install -e 'apps/api[dev]'
+
+      - name: Check version consistency
+        run: make version-check
+
+      - name: Lint markdown
+        run: make lint-md
+
+      - name: Lint and type-check
+        run: make api-lint
+
+      - name: Test
+        run: make test
+
+      - name: OpenAPI contract is up to date
+        run: |
+          make api-openapi
+          git diff --exit-code packages/shared-types/openapi.json \
+            || { echo "::error::openapi.json is stale — run 'make api-openapi' and commit"; exit 1; }
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bookmarks_test
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install API
+        run: |
+          python -m venv apps/api/.venv
+          apps/api/.venv/bin/pip install --upgrade pip
+          apps/api/.venv/bin/pip install -e 'apps/api[dev]'
+
+      - name: Postgres suite
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/bookmarks_test
+        run: make test-pg
