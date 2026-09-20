@@ -100,6 +100,24 @@ Alembic prints both before any DDL runs:
 [alembic] connected to 'page_history' as 'api'
 ```
 
+### Which database am I actually talking to?
+
+```sh
+make -C ../.. db-doctor
+```
+
+It prints which `.env` files were found, any `DB_*` set in the environment (which beat
+both files), where the package was imported from, what the settings resolve to, and then
+asks the server it reaches to identify itself — including `data_directory`, the one
+fingerprint no two running instances can share.
+
+Worth running whenever a migration reports success and the tables are not where you
+expect. With several Postgres instances on one machine, each can hold a database of the
+same name owned by a role of the same name, and neither psql nor alembic will mention it.
+
+Note that `\d` in psql only lists relations in your session's `search_path`. `\dt *.*`
+ignores it and is the honest check.
+
 ### Fixing ownership after the fact
 
 If the database has no data worth keeping — which it will not, early on — start again as

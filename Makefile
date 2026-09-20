@@ -1,7 +1,12 @@
 
 
-HOST         := $(shell grep -s HOST=          .env | sed 's/.*=//')
-APP_PORT     := $(shell grep -s APP_PORT=      .env | sed 's/.*=//')
+API_HOST     := $(shell grep -s API_HOST=      .env | sed 's/.*=//')
+API_PORT     := $(shell grep -s API_PORT=      .env | sed 's/.*=//')
+DB_HOST      := $(shell grep -s DB_HOST=       .env | sed 's/.*=//')
+DB_PORT      := $(shell grep -s DB_PORT=       .env | sed 's/.*=//')
+DB_USER      := $(shell grep -s DB_USER=       .env | sed 's/.*=//')
+DB_PASSWORD  := $(shell grep -s DB_PASSWORD=   .env | sed 's/.*=//')
+DB_NAME      := $(shell grep -s DB_NAME=       .env | sed 's/.*=//')
 
 # All Python work goes through uv: it resolves the interpreter, keeps .venv in step
 # with uv.lock, and syncs on demand -- so `make test` works from a clean checkout
@@ -12,8 +17,12 @@ UV           := uv --project apps/api
 # -----------------------------------------------------------------------------
 
 chk-env:
-	@echo "      HOST |${HOST}|"
-	@echo "  APP_PORT |${APP_PORT}|"
+	@echo "  API_HOST |${API_HOST}|"
+	@echo "  API_PORT |${API_PORT}|"
+	@echo "   DB_HOST |${DB_HOST}|"
+	@echo "   DB_PORT |${DB_PORT}|"
+	@echo "   DB_USER |${DB_USER}|"
+	@echo "   DB_NAME |${DB_NAME}|"
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -24,7 +33,7 @@ help:  ## Show this help
 
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
         api-lint api-openapi test test-api test-scripts test-ext test-pg \
-        migrate migrate-status migrate-stamp db-connect
+        migrate migrate-status migrate-stamp db-connect db-doctor
 
 
 # --- the release gate -------------------------------------------------------
@@ -92,9 +101,11 @@ migrate-stamp:  ## Record a revision as applied WITHOUT running it (for a hand-a
 	@test -n "$(REV)" || { echo "usage: make migrate-stamp REV=0001"; exit 1; }
 	cd apps/api && uv run alembic stamp $(REV)
 
+db-doctor:  ## Show which database the settings actually reach, and what is in it
+	cd apps/api && uv run python -m bookmarks_api.doctor
+
 db-connect:  ## psql into the database using the values in apps/api/.env
-	@set -a; . apps/api/.env; set +a; \
-	  PGPASSWORD="$$DB_PASSWORD" psql -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" "$$DB_NAME"
+	  PGPASSWORD=${DB_PASSWORD} psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} ${DB_NAME}
 
 
 # -----------------------------------------------------------------------------

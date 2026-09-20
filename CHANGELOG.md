@@ -17,6 +17,11 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
   resolving something else. Dev tools moved from an optional extra to a PEP 735
   `[dependency-groups]`, which plain `uv sync` installs. Every `make` target now runs
   through `uv run`, which syncs first — so they work from a clean checkout.
+- Added `make db-doctor`: prints which `.env` files were found, any `DB_*` shadowing them
+  from the environment, where the package was imported from, what the settings resolve to,
+  and what the server it reaches says about itself — database, role, listening port and
+  `data_directory`. For when a migration reports success and the tables are not where you
+  expect, which several Postgres instances on one machine makes easy.
 - Added `make db-connect`, which reads `apps/api/.env` rather than hardcoding a host,
   port and role that now live in one place.
 - **`DB_USER` is now required.** Left empty it built `postgresql+psycopg://:@…`, where
