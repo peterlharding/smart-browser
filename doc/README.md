@@ -2,7 +2,7 @@
 
 | Document | What it is | Lifetime |
 | --- | --- | --- |
-| [`audit-2026-09-20.md`](audit-2026-09-20.md) | Measured state of the `bookmarks-pg` corpus at project start | **Frozen.** A dated snapshot — never edit it; take a new one if you re-measure |
+| [`audit-2026-09-20.md`](audit-2026-09-20.md) | Eleven years of a bookmarking system's measured failure modes — the evidence every design decision rests on | **Frozen.** A dated snapshot — never edit it |
 | [`architecture.md`](architecture.md) | Target design: shell, schema, API, categorization pipeline | Stable. Changes when a decision changes |
 | [`plan.md`](plan.md) | Migration steps, milestones, open questions | Churns. Expect to edit this weekly |
 | [`decisions/`](decisions/) | One file per settled decision (ADR), numbered and dated | Append-only |

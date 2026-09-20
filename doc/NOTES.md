@@ -8,8 +8,10 @@ Repo: `git@github.com:peterlharding/smart-browser.git`
 Checkout: `/Volumes/u/src/wip/browser/smart-browser` (note: `/u` is a symlink; folder
 access must use the `/Volumes/u/...` path)
 
-Reference backend being modelled on: `/Volumes/u/src/wip/bookmarks/bookmarks-pg`
-(`git@github.com:peterlharding/bookmarks-pg.git`)
+Predecessor: `/Volumes/u/src/wip/bookmarks/bookmarks-pg`
+(`git@github.com:peterlharding/bookmarks-pg.git`). **Not a dependency and not a source.**
+This is a new implementation; that project will be brought into line with this one later
+(ADR 0007). Its value here is the audit.
 
 ## Documentation map
 
@@ -24,7 +26,8 @@ Reference backend being modelled on: `/Volumes/u/src/wip/bookmarks/bookmarks-pg`
 
 ## The numbers that drive every decision
 
-From the 2025 dump of the existing database:
+Measured from eleven years of a real bookmarking system (`doc/audit-2026-09-20.md`). These
+are facts about what happens when tagging is deferred, not facts about data being migrated:
 
 - 9,472 bookmarks, **80.8% with no tags at all**
 - 1.44 tags on the average tagged bookmark (1,148 of 1,817 have exactly one)
@@ -32,8 +35,10 @@ From the 2025 dump of the existing database:
 - 9,081 with no title (96%)
 - 567 tags, 32 near-duplicate pairs, one blank tag used 43 times
 
-The consequence: AI categorization is not a late feature, it is what makes the corpus
-usable at all, and it must run as a backfill before the browser UI is worth building.
+The consequences, which are the whole design: tagging must happen at the moment of saving
+(the save sheet), duplication must be impossible by construction (`UNIQUE (url_hash)`), the
+tag vocabulary needs aliasing to survive free-text entry, and AI categorization is what
+makes a large collection navigable rather than a feature to add at the end.
 
 ## Settled decisions
 
@@ -54,15 +59,15 @@ usable at all, and it must run as a backfill before the browser UI is worth buil
 
 ## Status
 
-M0 complete: API v2 over the existing schema, auth on writes, idempotent save, URL
-normalisation, Alembic with the additive safety revision `0001`, schema guard, 75 tests,
-CI, release process.
+**M0 done.** API v2 on a clean schema, bearer auth on every request, saves that cannot
+duplicate, and a Chrome extension with a tag-on-save sheet. 145 tests across the API, the
+extension and the release tooling. CI, release process, seven ADRs.
 
-**Revision `0001` has not been applied to the live database, and that database has never
-been stamped by Alembic** — so the API will refuse to start against it until either
-`make migrate` or `make migrate-stamp REV=0001` has run. That refusal is deliberate.
+**The database is empty.** Nothing imports the old bookmarks; that is work for the other
+project (ADR 0007).
 
-Next: M1, identity — `app_user`, `user_identity`, the OAuth flow, token rotation.
+Next: M1 — identity, OAuth for Google and GitHub.
 
-Open questions are in `doc/plan.md`: which LLM for the backfill, tag hierarchy, and
-confirming `bookmarks.performiq.com` as the deployment target.
+Open questions in `doc/plan.md`: which LLM for categorization, where this deploys, whether
+tags should be hierarchical, and whether to rename `/api/v2` to `/api/v1` now that the `v2`
+is a fossil of the predecessor.

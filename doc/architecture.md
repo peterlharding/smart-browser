@@ -11,10 +11,13 @@ as an afterthought.
 
 ## Guiding constraint
 
-**The browser is a second client of the API, not a replacement for the extensions.** The existing
-Chrome and Firefox extensions keep working against API v2 with no behavioural change. If the
-browser turns out to be more work than it's worth, the result is still a much better bookmarks
-system — which is the hedge that makes this project safe to start.
+**The browser is a second client of the API, not the only one.** The extension in
+`apps/extension` already delivers the core interaction — tag at the moment of saving —
+without a browser existing. If the Electron shell turns out to be more work than it is
+worth, the result is still a much better bookmarks system than the one this replaces.
+
+That is the hedge that makes the project safe to start, and it is also why the API is
+designed as a product rather than as the browser's backend.
 
 ---
 
@@ -335,8 +338,9 @@ recomputed on a schedule. Cheap, and it makes steady-state suggestions free.
 
 ## 4. API v2
 
-Versioned at `/api/v2/*` alongside the existing routes, so the extensions keep working while
-they migrate.
+Versioned in the path so a breaking change need not break installed clients — an extension
+updates on its own schedule, not the server's. (On why it is `v2` and not `v1`, see the
+open question in `plan.md`.)
 
 ```text
 POST   /api/v2/auth/{provider}/start                → 302 to provider (google | github)
@@ -367,10 +371,8 @@ the shared `bookmark` table is never addressable directly.
 and the direct fix for 2,216 duplicates. It returns the existing bookmark with its tags so the
 browser can immediately show what it already knows about the page.
 
-**Auth:** all writes require a bearer token. Two kinds are accepted: the short-lived access JWT
-issued by the OAuth flow (the browser), and long-lived per-client API tokens bound to a user
-(the extensions, which cannot run an interactive sign-in). Both resolve to an `app_user`, so
-handlers see a user either way.
-
-The extensions currently post with no credentials at all — closing that is M0's job, before
-anything else here is built.
+**Auth:** every request requires a bearer token, reads included — bookmarks belong to a
+user, so there is no coherent anonymous read. Two kinds are accepted: the short-lived
+access JWT issued by the OAuth flow (the browser), and long-lived per-client API tokens
+bound to a user (the extension, which cannot run an interactive sign-in). Both resolve to
+an `app_user`, so handlers see a user either way.

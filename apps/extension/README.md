@@ -8,10 +8,10 @@ problem the audit actually found.
 
 ## Why this exists before the browser
 
-Of 9,472 bookmarks in the existing corpus, 80.8% have no tags at all, and the 1,817 that do
-average 1.44 tags each. The schema has always supported many tags per bookmark. What was
-missing was a moment at which tagging was convenient: the old extension posts a URL and
-nothing else, and tagging happened later, by hand, in a web form you had to go and find.
+Across 9,472 bookmarks measured over eleven years, 80.8% had no tags at all, and the 1,817
+that did averaged 1.44 tags each. The schema supported many tags per bookmark the whole
+time. What was missing was a moment at which tagging was convenient: saving posted a URL
+and nothing else, and tagging happened later, by hand, somewhere you had to go and find.
 
 Nobody does that. So tagging has to happen at save time, and that is all this is.
 
@@ -51,8 +51,8 @@ saved untagged — the amber is the point. It is a small reminder of how the bac
 
 ## What it does not do
 
-- **No AI tag suggestions yet.** Those arrive with M4, once the corpus has been crawled and
-  embedded. Until then, suggestions are your own vocabulary ranked by usage.
+- **No AI tag suggestions yet.** Those arrive with M4, once pages are crawled and embedded.
+  Until then, suggestions are your own vocabulary ranked by how often you use each tag.
 - **No offline queue.** If the API is unreachable, the save fails and says so. The Electron
   shell gets a proper queue; adding one here would mean duplicating it.
 - **Chrome only, so far.** The manifest is MV3 and the code has no Chrome-specific APIs

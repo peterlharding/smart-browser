@@ -1,7 +1,6 @@
 """SQLAlchemy models — the target schema.
 
-Shaped by ADR 0001 (two levels) and ADR 0002 (one tag vocabulary), on a clean database
-rather than the v1 tables (ADR 0006).
+Shaped by ADR 0001 (two levels) and ADR 0002 (one tag vocabulary).
 
 The idea that carries the most weight here: **the URL and the save are different things.**
 `Bookmark` is the page — global, unique on `url_hash`, owned by nobody, crawled and
@@ -179,8 +178,10 @@ class Tag(Base):
 class TagAlias(Base):
     """Misspellings and variants resolving to a canonical tag.
 
-    The audit found 32 near-duplicate pairs in 567 tags, and a hardcoded `corrections`
-    dict in the v1 app trying to keep up by hand. This is that dict as data.
+    Free-text tag entry decays without this: the audit measured 32 near-duplicate pairs
+    in a 567-tag vocabulary -- `bootstrap`/`boorstrap`, `fontawesome`/`font-awesome`,
+    `letsencrypt`/`letsencrypy`. Aliasing fixes the vocabulary for everyone at once, which
+    a per-client correction list cannot.
     """
 
     __tablename__ = "tag_alias"

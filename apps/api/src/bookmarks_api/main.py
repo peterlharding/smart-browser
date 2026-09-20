@@ -1,7 +1,7 @@
 """Application entry point.
 
-Mounted at /api/v2 so it can run alongside the existing v1 app during migration -- the
-Chrome and Firefox extensions keep posting to /xyzzy until M7 retires it.
+The API is versioned in its path so that a breaking change can be made without breaking
+installed clients -- an extension updates on its own schedule, not the server's.
 """
 
 from collections.abc import AsyncIterator

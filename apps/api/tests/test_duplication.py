@@ -1,8 +1,8 @@
 """Saving the same page repeatedly must never produce a second row.
 
 This is the promise the whole save flow is built around, so it gets its own file. The
-existing v1 corpus is 23% duplicates -- 2,216 rows of 9,472 -- created by an endpoint that
-inserted unconditionally. These tests are the reason that cannot recur.
+audit measured 23% duplicates -- 2,216 rows of 9,472 -- in a system whose save endpoint
+inserted unconditionally. These tests are the reason that cannot happen here.
 """
 
 
@@ -29,7 +29,7 @@ def test_first_save_is_201_and_the_rest_are_200(client, auth):
 
 
 def test_every_spelling_of_the_same_page_is_one_row(client, auth, db):
-    """The spellings that produced most of the v1 duplicates."""
+    """The spellings that produced most of the duplicates the audit measured."""
     for variant in [
         "https://example.com/docs",
         "https://example.com/docs/",

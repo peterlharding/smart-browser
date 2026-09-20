@@ -71,7 +71,7 @@ def test_invalid_url_is_rejected(client, auth):
 
 
 def test_site_is_the_registrable_domain_not_the_posting_client(client, auth):
-    """These were the same column in the v1 schema, which is why list-by-domain never worked."""
+    """Two different facts. Conflating them is why the predecessor's list-by-domain never worked."""
     r = post(client, auth, url="https://docs.python.org/3/library/", saved_from="AASDev")
     body = r.json()
     assert body["site"] == "python.org"
@@ -181,14 +181,14 @@ def test_removing_an_absent_tag_is_404(client, auth):
 
 
 def test_long_tags_are_accepted_now_the_column_is_text(client, auth):
-    """The varchar(32) cap was a v1 artefact; `tag.name` is text on the clean schema."""
+    """`tag.name` is text: nothing about a tag justifies a length limit."""
     long_tag = "x" * 80
     r = post(client, auth, url="https://example.com/a", tags=[long_tag])
     assert r.json()["tags"] == [long_tag]
 
 
 def test_blank_tags_are_rejected(client, auth):
-    """One blank tag on 43 bookmarks is exactly how the v1 vocabulary decayed."""
+    """One blank tag on 43 bookmarks is exactly how a vocabulary decays."""
     r = client.post(
         "/api/v2/bookmarks/1/tags", json={"tags": ["  "]}, headers=auth
     )

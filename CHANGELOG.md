@@ -11,7 +11,14 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Changed
 
-- **The API now owns a clean database** rather than running against the v1 `bookmarks-pg`
+- **Treated as a new implementation** rather than a successor (ADR 0007). The importer
+  milestone and the `/xyzzy` retirement milestone are both out of scope: the predecessor
+  will be brought into line with this project rather than the reverse, and nothing here
+  explains itself by reference to a schema nobody will run again.
+- `doc/audit-2026-09-20.md` is reframed as evidence about the problem — eleven years of a
+  bookmarking system's measured failure modes — rather than a description of data being
+  migrated. It stays unedited and stays load-bearing.
+- **The API owns a clean database** rather than running against the v1 `bookmarks-pg`
   tables (ADR 0006). Revisions `0001` and `0002` are replaced by a single revision creating
   the target schema: identity, the `bookmark` / `user_bookmark` split, a global tag
   vocabulary with aliases, and tag links carrying provenance.

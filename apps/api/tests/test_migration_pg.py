@@ -111,7 +111,8 @@ def test_a_user_cannot_save_the_same_page_twice(migrated):
 
 
 def test_blank_tag_names_are_rejected_by_the_check_constraint(migrated):
-    """One blank tag on 43 bookmarks is how the v1 vocabulary decayed."""
+    """Rejected by the database, not just by the API: one blank tag on 43 bookmarks is
+    how a vocabulary decays, and it should be impossible by any route."""
     session, _ = migrated
     with pytest.raises(IntegrityError):
         session.execute(text("INSERT INTO tag (name) VALUES ('   ')"))

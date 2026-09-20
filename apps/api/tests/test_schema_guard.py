@@ -48,7 +48,7 @@ def test_non_postgres_engines_are_skipped():
     engine.dispose()
 
 
-def test_unstamped_database_explains_both_recovery_paths(monkeypatch):
+def test_empty_database_explains_both_recovery_paths(monkeypatch):
     engine = create_engine("sqlite://")
     monkeypatch.setattr(engine.dialect, "name", "postgresql")
     monkeypatch.setattr(schema_guard, "current_revision", lambda _: None)
@@ -57,9 +57,9 @@ def test_unstamped_database_explains_both_recovery_paths(monkeypatch):
         verify(engine)
 
     message = str(excinfo.value)
-    assert "never been stamped" in message
-    assert "upgrade head" in message
-    assert "stamp" in message
+    assert "no schema" in message
+    assert "upgrade head" in message  # the normal case: create it
+    assert "stamp" in message  # the recovery case: tables exist, Alembic does not know
     engine.dispose()
 
 

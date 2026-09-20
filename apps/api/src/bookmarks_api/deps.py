@@ -23,9 +23,9 @@ def require_token(
 ) -> str:
     """Bearer-token auth for writes.
 
-    Note what happens with no tokens configured: writes are *refused*, not allowed. An
-    unconfigured deployment should be inert, not open -- which is the failure mode that
-    left the v1 `/xyzzy` endpoint world-writable.
+    Note what happens with no tokens configured: requests are *refused*, not allowed. An
+    unconfigured deployment should be inert rather than public -- failing open is how
+    write endpoints quietly end up exposed.
     """
     tokens = settings.token_set
     if not tokens:

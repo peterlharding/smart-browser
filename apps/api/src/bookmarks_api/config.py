@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     #     API_TOKENS=plh:s3cret,alice:t0ken     -> two users
     #     API_TOKENS=s3cret                     -> one user, named by single_user_id
     #
-    # Empty means every request is refused -- deliberately not "everything is open",
-    # which is how the v1 /xyzzy endpoint ended up public.
+    # Empty means every request is refused -- deliberately not "everything is open".
+    # An unconfigured deployment should be inert, not public.
     api_tokens: str = ""
 
     # The display_name of the app_user row a bare API token maps to, created on first

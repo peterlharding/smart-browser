@@ -22,9 +22,9 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
-# Autogenerate is deliberately not relied upon: these migrations transform a schema that
-# SQLAlchemy models do not yet describe (the v1 shape). target_metadata is set so that
-# `--autogenerate` is available from M2 onward, when the models are the source of truth.
+# The models are the source of truth for the schema, so `alembic revision --autogenerate`
+# works. Review what it produces: it is reliable for columns and tables, and blind to
+# server defaults, enum changes and anything needing a data migration.
 target_metadata = Base.metadata
 
 

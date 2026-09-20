@@ -48,11 +48,9 @@ def verify(engine: Engine, *, required: str = REQUIRED_SCHEMA_REVISION) -> None:
 
     if found is None:
         raise SchemaMismatch(
-            "This database has never been stamped by Alembic, so its schema state is "
-            "unknown.\n"
-            "If it is the existing v1 database and the M0 migration has NOT been applied:\n"
+            "This database has no schema. Create it with:\n"
             "    alembic -c apps/api/alembic.ini upgrade head\n"
-            "If the migration was already applied by hand with psql:\n"
+            "If the tables exist but Alembic has never recorded a revision for them:\n"
             f"    alembic -c apps/api/alembic.ini stamp {required}"
         )
 

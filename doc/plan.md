@@ -8,43 +8,38 @@
 
 | # | Deliverable | Why here | Status |
 | --- | --- | --- | --- |
-| **M0** | Monorepo; API v2; auth on writes; release process and CI | Unblocks everything | **done** |
-| **M0.5** | Clean schema; extension v2 with tag-on-save | Delivers the actual value — tagging at save time — without waiting for a browser | **done** |
-| **M1** | Identity: OAuth for Google and GitHub, token issue/rotation | Tokens are a stand-in; real sign-in replaces them | not started |
-| **M2** | Importer from the cleaned-up `bookmarks-pg` | Brings the corpus across, with dedupe and tag-alias work | not started |
-| **M3** | Crawler: titles, text, embeddings; `bookmark_content` and pgvector | Nothing downstream works without extracted content | not started |
-| **M4** | AI categorization: suggestions on save, backfill, review queue | Makes the corpus navigable — **the payoff step** | not started |
-| **M5** | Electron shell: tabs, omnibox, OAuth sign-in, save sheet | First point the browser beats Chrome + extension | not started |
+| **M0** | Monorepo, API v2, clean schema, extension with tag-on-save, release process, CI | Tagging at the moment of saving is the product; everything else supports it | **done** |
+| **M1** | Identity: OAuth for Google and GitHub, token issue and rotation | API tokens are a stand-in; real sign-in replaces them | not started |
+| **M3** | Crawler: titles, text, embeddings. `bookmark_content`, pgvector | Nothing downstream works without extracted content | not started |
+| **M4** | AI categorization: suggestions on save, backfill, review queue for proposals | Tagging stops depending on you thinking of the tag | not started |
+| **M5** | Electron shell: tabs, omnibox, OAuth sign-in, save sheet | First point a browser beats Chrome plus the extension | not started |
 | **M6** | Tag sidebar, multi-tag intersection, hybrid search | The thing you actually wanted | not started |
-| **M7** | Retire the v1 `/xyzzy` endpoint | Old clients converge | not started |
 
-M0–M4 are worth doing even if the browser never ships. That's deliberate.
+**The gaps are deliberate.** M2 was an importer from the predecessor and M7 retired its
+`/xyzzy` endpoint; both are out of scope now that the predecessor will be brought into line
+with this project rather than the reverse (ADR 0007). Surviving milestones keep their
+numbers so that references to M3 and M4 in earlier ADRs stay correct.
 
-**What moved, and why.** Two reorderings, both driven by the same instinct: get something
-usable sooner.
+M0, M3 and M4 are worth doing even if the browser never ships. That's deliberate: the
+extension already delivers the core interaction, and a browser over an untagged corpus
+would be a browser over an empty index.
 
-The extension moved to the front (was M7). Tagging at save time is the entire point of the
-project, and it needed no browser — only an API and a popup. It now exists.
-
-The schema migration became an *importer* (M2). The v1 tables are being cleaned up
-separately, so the new API owns a clean database rather than accommodating the old one
-(ADR 0006). That deleted a great deal: the advisory-lock id allocation, the lock that
-serialised check-then-insert, the URL string fallback, and the `varchar(32)` tag cap. It
-also made the no-duplicates promise a database constraint instead of a code convention,
-which is what it should always have been.
+**What moved, and why.** The extension came to the front, because tagging at save time is
+the entire point and it needed no browser — only an API and a popup. It now exists, and
+that is what made it reasonable to push the Electron shell back behind the categorization
+work rather than ahead of it.
 
 ---
 
-## M0 and M0.5 — done
+## M0 — done
 
-**API** (`apps/api/`), on a clean database built by Alembic revision `0001`:
+**API** (`apps/api/`), on a schema created by Alembic revision `0001`:
 
-- Bearer auth on **every** request. Reads included — bookmarks belong to a user, so there
-  is no coherent anonymous read. With no tokens configured the API refuses everything
-  rather than allowing it.
+- Bearer auth on **every** request, reads included — bookmarks belong to a user, so there
+  is no coherent anonymous read. With no tokens configured the API refuses everything.
 - `POST /bookmarks` is an upsert over `UNIQUE (url_hash)`: 201 the first time, 200 after,
   never a second row, whatever the URL's spelling and however many clients call at once.
-- `GET /bookmarks/lookup` answers "have I saved this?" without writing anything.
+- `GET /bookmarks/lookup` answers "have I saved this?" without writing.
 - Tag intersection (`?tags=a,b&mode=all`) and `?untagged=true`.
 - Every read scoped through `user_bookmark`; `test_scoping.py` guards the invariant.
 - A schema guard that refuses to start against the wrong Alembic revision.
@@ -53,11 +48,10 @@ which is what it should always have been.
 
 - `⌘⇧B` opens a save sheet: existing tags, autocomplete ranked by your usage, `Tab` to
   accept, `Enter` to save. Opening it is a lookup, never a save.
-- `⌘⇧S` quick-saves with no tagging, badging amber to mark an untagged save.
+- `⌘⇧S` quick-saves with no tagging, badging amber to mark the untagged save.
 - Options page with a connection test reporting API, contract and schema versions.
 
-**Not yet pointed at a live database.** `make migrate` creates the schema; there is no
-data in it until M2.
+**The database is empty.** Nothing brings data in; see ADR 0007.
 
 ---
 
@@ -69,11 +63,18 @@ The v1 code uses `gpt-4o`, heavier than this task needs. The vocabulary is const
 output is structured, so a small model should do. Worth benchmarking two candidates against the
 1,817 hand-tagged bookmarks — you have ground truth, so measure rather than guess.
 
-### 2. Deployment target? *(blocks M5)*
+### 2. Deployment target? *(blocks M1)*
 
-Does `bookmarks.performiq.com` stay the target, with the browser talking to it over the
-internet? It has to, now: OAuth sign-in requires the backend to be reachable, so a
-bundled-local-API option is off the table for first login. Confirms the offline queue matters.
+Where does this run? OAuth sign-in needs the backend reachable from wherever the browser
+is, so a bundled-local-API option is off the table for first login — which also confirms
+the offline queue matters.
+
+### 2a. Rename `/api/v2` to `/api/v1`? *(cheapest now, never cheaper)*
+
+The `v2` is a fossil — it was v2 because the predecessor was v1. This is the first contract
+version of a new system and the name is wrong. One client would need updating, which is as
+cheap as it will ever get. Against: it is a contract change, and a wrong-but-stable name
+costs nothing functionally.
 
 ### 3. Tag hierarchy? *(blocks M4 — changes the prompt)*
 

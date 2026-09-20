@@ -1,7 +1,7 @@
 """Auth behaviour.
 
-The v1 `/xyzzy` endpoint writes to the database with no credentials at all. These tests
-exist so that regression cannot happen quietly.
+The predecessor's write endpoint accepted anything, from anyone, for ten years. These
+tests exist so that cannot happen here quietly.
 """
 
 from fastapi import status
@@ -32,8 +32,8 @@ def test_write_with_non_bearer_scheme_is_rejected(client):
 def test_unconfigured_deployment_refuses_writes_rather_than_allowing_them(anon_client, auth):
     """With no API_TOKENS set, writes must fail closed.
 
-    Failing *open* here is precisely how /xyzzy ended up world-writable, so this asserts
-    503 rather than merely 'not 200'.
+    Failing *open* on a missing config is how write endpoints quietly end up exposed, so
+    this asserts 503 specifically rather than merely 'not 200'.
     """
     r = anon_client.post("/api/v2/bookmarks", json=PAYLOAD, headers=auth)
     assert r.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
