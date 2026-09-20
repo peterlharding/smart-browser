@@ -11,6 +11,15 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **`make migrate` failed with "Path doesn't exist: migrations".** `script_location` in
+  `db/alembic.ini` was relative, so alembic resolved it against the working directory
+  rather than against the file — it worked only while alembic happened to be run from
+  `db/`. Now `%(here)s/migrations`. The same cwd-relative trap that hid `.env` from the
+  settings a few commits earlier.
+- The Postgres suite built its own alembic `Config` and set `script_location` itself, so
+  it never exercised the shipped value — which is how a broken setting survived a green
+  test run. It now loads `db/alembic.ini` as shipped and overrides only the URL.
+
 - **Migrations were being silently rolled back.** `alembic upgrade head` logged
   `Running upgrade -> 0001`, exited 0, printed no error, and left an empty database. The
   connection diagnostic added alongside the `page_history` rename executed on the

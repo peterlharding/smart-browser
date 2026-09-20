@@ -190,3 +190,57 @@ def test_the_revision_refuses_meta_commands_it_cannot_run():
     assert "is not supported" in revision, (
         "the runner must raise on an unknown meta-command, not skip it"
     )
+
+
+# --- the shipped alembic.ini -------------------------------------------------
+
+
+def test_alembic_ini_resolves_from_any_working_directory(tmp_path, monkeypatch):
+    """Load the shipped config, from somewhere else, and find the revisions.
+
+    `script_location = migrations` is resolved against the *working directory*, not
+    against alembic.ini, so it worked only while alembic happened to be run from db/.
+    `make migrate` runs from the repo root and died with "Path doesn't exist: migrations".
+
+    Every other test here builds its own Config and sets script_location explicitly, which
+    is precisely why a broken shipped value survived a green suite. This one uses the file
+    as shipped.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    from bookmarks_api.config import ALEMBIC_INI
+
+    monkeypatch.chdir(tmp_path)  # no ./migrations here
+    script = ScriptDirectory.from_config(Config(str(ALEMBIC_INI)))
+
+    revisions = [rev.revision for rev in script.walk_revisions()]
+    assert revisions, "the shipped alembic.ini found no revisions"
+
+
+def test_no_setting_in_alembic_ini_is_relative_to_the_working_directory():
+    """Catch the next one of these before it ships.
+
+    Path settings must be absolute or anchored with %(here)s. This has now bitten twice --
+    once for .env, once for script_location -- and both times the symptom was something
+    working from one directory and not another.
+    """
+    from bookmarks_api.config import ALEMBIC_INI
+
+    path_settings = ("script_location", "prepend_sys_path", "version_locations")
+    offenders = []
+    for line in ALEMBIC_INI.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        key, value = key.strip(), value.strip()
+        if key in path_settings and value:
+            anchored = value.startswith(("/", "%(here)s"))
+            if not anchored:
+                offenders.append(f"{key} = {value}")
+
+    assert not offenders, (
+        "relative path(s) in alembic.ini, resolved against the working directory rather "
+        f"than the file: {offenders}. Use %(here)s/."
+    )

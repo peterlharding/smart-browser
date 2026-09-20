@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from bookmarks_api.config import ALEMBIC_INI, MIGRATIONS_DIR
+from bookmarks_api.config import ALEMBIC_INI
 from bookmarks_api.schema_guard import REQUIRED_SCHEMA_REVISION, current_revision, verify
 from bookmarks_api.urlnorm import url_hash
 
@@ -30,8 +30,11 @@ TABLES = [
 def alembic_config(url: str):
     from alembic.config import Config
 
+    # Load the shipped alembic.ini and override *only* the URL. Setting script_location
+    # here as well would mean the suite never exercises the shipped value -- which is how
+    # `script_location = migrations`, resolved against the working directory, stayed
+    # broken through a green test run.
     cfg = Config(str(ALEMBIC_INI))
-    cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
     cfg.set_main_option("sqlalchemy.url", url)
     return cfg
 
