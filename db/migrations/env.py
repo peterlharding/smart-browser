@@ -1,20 +1,28 @@
 """Alembic environment.
 
-The database URL comes from the application settings rather than alembic.ini, so there is
-one place credentials live and `alembic upgrade head` cannot be pointed somewhere the app
-is not.
+Standalone by design. `db/` is the project's schema, not the API service's, so a migration
+must not require the API package to be installed -- `alembic upgrade head` needs only
+alembic, sqlalchemy and psycopg.
+
+The database URL comes from `dburl.py`, which reads the same `.env` files the application
+reads. `bookmarks_api` is imported only for `--autogenerate`, and only if it happens to be
+available; without it every other alembic command still works.
 """
 
 from __future__ import annotations
 
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 import sqlalchemy as sa
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from bookmarks_api.config import get_settings
-from bookmarks_api.db import Base
+# alembic loads this file by path, so its directory is not importable by default.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from dburl import resolve_database_url  # noqa: E402
 
 config = context.config
 
@@ -22,12 +30,25 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 if not config.get_main_option("sqlalchemy.url", None):
-    config.set_main_option("sqlalchemy.url", get_settings().database_url)
+    # `alembic -x db_url=...` beats everything, for a scratch database or a recovery.
+    x_args = context.get_x_argument(as_dictionary=True)
+    config.set_main_option("sqlalchemy.url", resolve_database_url(x_args.get("db_url")))
 
-# The models are the source of truth for the schema, so `alembic revision --autogenerate`
-# works. Review what it produces: it is reliable for columns and tables, and blind to
-# server defaults, enum changes and anything needing a data migration.
-target_metadata = Base.metadata
+# Only needed for `alembic revision --autogenerate`, which compares the models against the
+# database. Optional on purpose: requiring the API package here would make the schema tree
+# depend on one of the services that uses it.
+#
+# Autogenerate is reliable for tables and columns and blind to server defaults, enum
+# changes and anything needing a data migration -- and the DDL in this project is written
+# by hand in db/schema/create anyway, so this is a cross-check rather than a generator.
+try:
+    from bookmarks_api.db import Base
+
+    import bookmarks_api.models  # noqa: F401  registers the tables on Base
+
+    target_metadata = Base.metadata
+except ModuleNotFoundError:
+    target_metadata = None
 
 
 def run_migrations_offline() -> None:

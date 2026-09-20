@@ -1,0 +1,24 @@
+# The schema's own project, so `db/` can be migrated without the API installed.
+#
+# Nothing here depends on bookmarks_api: env.py resolves the database URL itself and only
+# imports the app for `--autogenerate`, which is optional. That keeps the schema tree the
+# project's rather than one service's.
+[project]
+name = "page-history-db"
+version = "0.1.0"
+description = "Schema and migrations for the page_history database."
+requires-python = ">=3.11"
+dependencies = [
+    "alembic>=1.13",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100

@@ -11,6 +11,14 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **`alembic upgrade head` required the API package to be installed.** `env.py` imported
+  `bookmarks_api.config` for the database URL, so running it from a `db/`-only environment
+  died with `ModuleNotFoundError`. The schema belongs to the project rather than to one
+  service, so the dependency is now gone: `db/migrations/dburl.py` resolves the URL from
+  the same `.env` files using only the standard library, and `bookmarks_api` is imported
+  solely for `--autogenerate`, and only if present. `db/` has its own `pyproject.toml`
+  needing alembic, sqlalchemy and psycopg.
+
 - **`make migrate` failed with "Path doesn't exist: migrations".** `script_location` in
   `db/alembic.ini` was relative, so alembic resolved it against the working directory
   rather than against the file — it worked only while alembic happened to be run from

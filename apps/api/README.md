@@ -197,7 +197,23 @@ requires a clean run. The third-party deprecations we cannot fix are listed expl
 ## Migrations
 
 Alembic, in `db/migrations/` at the repo root — the schema belongs to the project, not to
-this service.
+this service, and **migrating it does not require this package**. `db/` has its own
+`pyproject.toml` needing only alembic, sqlalchemy and psycopg:
+
+```sh
+cd db && uv run alembic upgrade head        # or, from the repo root:
+make migrate
+```
+
+`env.py` resolves the database URL itself, via `db/migrations/dburl.py`, reading the same
+`.env` files with the same precedence using nothing but the standard library. The API
+package is imported only for `--autogenerate`, and only if it happens to be installed.
+
+`alembic -x db_url=postgresql+psycopg://…` overrides everything, for a scratch database or
+a recovery.
+
+That does mean the URL is built in two places. `apps/api/tests/test_dburl.py` builds both
+from identical inputs and asserts they agree, including their defaults.
 
 **The DDL is SQL, not Python.** It lives one object per file in `db/schema/create/`, with
 `create_tables.sql` as the ordered manifest. Revision `0001` parses that manifest and runs

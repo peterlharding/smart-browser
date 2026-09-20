@@ -31,9 +31,19 @@ help:  ## Show this help
 
 # -----------------------------------------------------------------------------
 
+venv:
+	uv venv .venv
+
+install:
+	uv pip install -r requirements.txt
+
+
+# -----------------------------------------------------------------------------
+
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
         api-lint api-openapi test test-api test-scripts test-ext test-pg \
-        migrate migrate-status migrate-revision migrate-stamp db-connect db-doctor
+        migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
+        db-connect db-doctor
 
 
 # --- the release gate -------------------------------------------------------
@@ -91,9 +101,10 @@ api-openapi:  ## Regenerate the committed OpenAPI contract
 	@echo "wrote packages/shared-types/openapi.json"
 	@git diff --stat packages/shared-types/openapi.json
 
-# The alembic tree is at db/, not under apps/api: the schema belongs to the project, not
-# to one service. `--project apps/api` still supplies the environment alembic runs in.
-ALEMBIC := $(UV) run alembic -c db/alembic.ini
+# db/ has its own project: the schema belongs to the project, not to one service, so
+# migrating it needs only alembic, sqlalchemy and psycopg -- not the API package.
+# --autogenerate is the exception and uses the API environment (see migrate-autogen).
+ALEMBIC := uv --project db run alembic -c db/alembic.ini
 
 migrate:  ## Bring the database to the revision this code requires
 	$(ALEMBIC) upgrade head
@@ -104,6 +115,10 @@ migrate-status:  ## Show the database's current revision against the code's head
 migrate-revision:  ## New empty revision: make migrate-revision M="what it does"
 	@test -n "$(M)" || { echo 'usage: make migrate-revision M="what it does"'; exit 1; }
 	$(ALEMBIC) revision -m "$(M)"
+
+migrate-autogen:  ## Revision diffed against the models; needs the API environment
+	@test -n "$(M)" || { echo 'usage: make migrate-autogen M="what it does"'; exit 1; }
+	$(UV) run alembic -c db/alembic.ini revision --autogenerate -m "$(M)"
 
 migrate-stamp:  ## Record a revision as applied WITHOUT running it
 	@test -n "$(REV)" || { echo "usage: make migrate-stamp REV=0001"; exit 1; }
