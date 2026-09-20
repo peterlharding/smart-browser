@@ -1,136 +1,159 @@
 """Postgres-only checks.
 
 Opt in with `pytest -m postgres` and `TEST_DATABASE_URL` pointing at a scratch database.
-These cover what SQLite structurally cannot: sequence detection, advisory-lock id
-allocation, and whether `0001_m0_safety.sql` actually applies to a v1-shaped schema.
+These cover the two things SQLite cannot speak to: that `alembic upgrade head` really
+builds the schema the models describe, and that `UNIQUE (url_hash)` is what enforces the
+no-duplicates promise rather than the application being careful.
 
-Never point TEST_DATABASE_URL at the real bookmarks database -- these tests create and
-drop tables.
+Never point TEST_DATABASE_URL at a real database -- these tests create and drop tables.
 """
 
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from bookmarks_api.ids import next_id, sequences_installed
+from bookmarks_api.schema_guard import REQUIRED_SCHEMA_REVISION, current_revision, verify
+from bookmarks_api.urlnorm import url_hash
 
 pytestmark = pytest.mark.postgres
 
-V1_SCHEMA = """
-DROP TABLE IF EXISTS bookmark_tag, bookmark, tag CASCADE;
-CREATE TABLE bookmark (
-    id integer NOT NULL PRIMARY KEY,
-    url character varying(256),
-    title character varying(256),
-    host character varying(256),
-    used timestamp without time zone
-);
-CREATE TABLE bookmark_tag (
-    id integer NOT NULL PRIMARY KEY,
-    bookmark_fk integer,
-    tag_fk integer
-);
-CREATE TABLE tag (
-    id integer NOT NULL PRIMARY KEY,
-    tag character varying(32)
-);
-"""
+API_ROOT = Path(__file__).resolve().parent.parent
+TABLES = [
+    "app_user", "user_identity", "bookmark", "user_bookmark",
+    "tag", "tag_alias", "bookmark_tag",
+]
 
-MIGRATION = Path(__file__).parent.parent / "migrations" / "sql" / "0001_m0_safety.sql"
+
+def alembic_config(url: str):
+    from alembic.config import Config
+
+    cfg = Config(str(API_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(API_ROOT / "migrations"))
+    cfg.set_main_option("sqlalchemy.url", url)
+    return cfg
 
 
 @pytest.fixture
-def pg_session(pg_url):
+def migrated(pg_url):
+    """A database brought to head by Alembic, torn down afterwards."""
+    from alembic import command
+
     engine = create_engine(pg_url)
-    with engine.begin() as conn:
-        conn.execute(text(V1_SCHEMA))
+    cfg = alembic_config(pg_url)
+
+    command.upgrade(cfg, "head")
     session = sessionmaker(bind=engine)()
     try:
-        yield session
+        yield session, engine
     finally:
         session.close()
+        command.downgrade(cfg, "base")
         with engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS bookmark_tag, bookmark, tag CASCADE"))
+            conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         engine.dispose()
 
 
-def test_v1_schema_has_no_sequences(pg_session):
-    assert sequences_installed(pg_session, "bookmark") is False
+def test_upgrade_creates_every_table(migrated):
+    _, engine = migrated
+    present = set(inspect(engine).get_table_names())
+    assert set(TABLES) <= present
 
 
-def test_advisory_lock_allocation_continues_from_the_maximum(pg_session):
-    pg_session.execute(text("INSERT INTO bookmark (id, url) VALUES (7, 'https://x/')"))
-    assert next_id(pg_session, "bookmark") == 8
-    pg_session.rollback()
-
-
-def test_allocation_refuses_unknown_tables(pg_session):
-    with pytest.raises(ValueError):
-        next_id(pg_session, "'; DROP TABLE bookmark; --")
-
-
-def test_migration_installs_sequences_and_indexes(pg_session):
-    sql = MIGRATION.read_text()
-    pg_session.execute(text("INSERT INTO bookmark (id, url) VALUES (42, 'https://x/')"))
-    pg_session.commit()
-
-    # CREATE INDEX CONCURRENTLY cannot run inside a transaction, so this mirrors how
-    # Alembic applies the file: autocommit throughout.
-    raw = pg_session.get_bind().raw_connection()
-    raw.set_session(autocommit=True)
-    with raw.cursor() as cur:
-        cur.execute(sql)
-    raw.close()
-
-    assert sequences_installed(pg_session, "bookmark") is True
-
-    # The next insert must not collide with the existing row.
-    pg_session.execute(text("INSERT INTO bookmark (url) VALUES ('https://y/')"))
-    pg_session.commit()
-    highest = pg_session.execute(text("SELECT MAX(id) FROM bookmark")).scalar_one()
-    assert highest == 43
-
-    indexes = {
-        row[0]
-        for row in pg_session.execute(
-            text("SELECT indexname FROM pg_indexes WHERE tablename IN "
-                 "('bookmark','bookmark_tag')")
-        )
-    }
-    assert "bookmark_tag_tag_fk_idx" in indexes
-    assert "bookmark_url_idx" in indexes
-
-
-def test_alembic_upgrade_and_downgrade_round_trip(pg_url, pg_session):
-    """`alembic upgrade head` must work end to end, not just the raw SQL.
-
-    Applying the .sql file by hand and calling that a tested migration would miss the
-    parts Alembic owns: the transaction boundary, the autocommit block around
-    CONCURRENTLY, and the version stamp the schema guard reads.
-    """
-    from alembic import command
-    from alembic.config import Config
-
-    from bookmarks_api.schema_guard import REQUIRED_SCHEMA_REVISION, current_revision, verify
-
-    api_root = Path(__file__).resolve().parent.parent
-    cfg = Config(str(api_root / "alembic.ini"))
-    cfg.set_main_option("script_location", str(api_root / "migrations"))
-    cfg.set_main_option("sqlalchemy.url", pg_url)
-
-    engine = pg_session.get_bind()
-
-    command.upgrade(cfg, "head")
+def test_upgrade_stamps_the_revision_the_code_requires(migrated):
+    _, engine = migrated
     assert current_revision(engine) == REQUIRED_SCHEMA_REVISION
+    verify(engine)  # the guard must be satisfied by a database just brought to head
 
-    # The guard must be satisfied by a database Alembic has just brought to head.
-    verify(engine)
 
-    # And the sequences it installed must actually allocate.
-    pg_session.execute(text("INSERT INTO bookmark (url) VALUES ('https://after-upgrade/')"))
-    pg_session.commit()
+def test_url_hash_is_unique_at_the_database_level(migrated):
+    """The no-duplicates promise, tested where it is actually kept."""
+    session, _ = migrated
+    digest = url_hash("https://example.com/a")
 
+    session.execute(
+        text("INSERT INTO bookmark (url, url_hash) VALUES (:u, :h)"),
+        {"u": "https://example.com/a", "h": digest},
+    )
+    session.commit()
+
+    with pytest.raises(IntegrityError):
+        session.execute(
+            text("INSERT INTO bookmark (url, url_hash) VALUES (:u, :h)"),
+            {"u": "https://example.com/a?spelled=differently", "h": digest},
+        )
+        session.commit()
+    session.rollback()
+
+
+def test_a_user_cannot_save_the_same_page_twice(migrated):
+    session, _ = migrated
+    session.execute(text("INSERT INTO app_user (display_name) VALUES ('plh')"))
+    session.execute(
+        text("INSERT INTO bookmark (url, url_hash) VALUES ('https://x/', :h)"),
+        {"h": url_hash("https://x/")},
+    )
+    session.commit()
+
+    insert = text(
+        "INSERT INTO user_bookmark (user_id, bookmark_id) "
+        "SELECT u.id, b.id FROM app_user u, bookmark b"
+    )
+    session.execute(insert)
+    session.commit()
+
+    with pytest.raises(IntegrityError):
+        session.execute(insert)
+        session.commit()
+    session.rollback()
+
+
+def test_blank_tag_names_are_rejected_by_the_check_constraint(migrated):
+    """One blank tag on 43 bookmarks is how the v1 vocabulary decayed."""
+    session, _ = migrated
+    with pytest.raises(IntegrityError):
+        session.execute(text("INSERT INTO tag (name) VALUES ('   ')"))
+        session.commit()
+    session.rollback()
+
+
+def test_deleting_a_save_cascades_to_its_tag_links(migrated):
+    session, _ = migrated
+    session.execute(text("INSERT INTO app_user (display_name) VALUES ('plh')"))
+    session.execute(
+        text("INSERT INTO bookmark (url, url_hash) VALUES ('https://x/', :h)"),
+        {"h": url_hash("https://x/")},
+    )
+    session.execute(text("INSERT INTO tag (name) VALUES ('python')"))
+    session.execute(
+        text("INSERT INTO user_bookmark (user_id, bookmark_id) "
+             "SELECT u.id, b.id FROM app_user u, bookmark b")
+    )
+    session.execute(
+        text("INSERT INTO bookmark_tag (user_bookmark_id, tag_id) "
+             "SELECT ub.id, t.id FROM user_bookmark ub, tag t")
+    )
+    session.commit()
+
+    session.execute(text("DELETE FROM user_bookmark"))
+    session.commit()
+    assert session.execute(text("SELECT count(*) FROM bookmark_tag")).scalar_one() == 0
+    # The shared URL record survives; it belongs to everyone.
+    assert session.execute(text("SELECT count(*) FROM bookmark")).scalar_one() == 1
+
+
+def test_downgrade_removes_everything(pg_url):
+    from alembic import command
+
+    engine = create_engine(pg_url)
+    cfg = alembic_config(pg_url)
+    command.upgrade(cfg, "head")
     command.downgrade(cfg, "base")
-    assert current_revision(engine) in (None, "")
+
+    remaining = set(inspect(engine).get_table_names()) & set(TABLES)
+    assert remaining == set()
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    engine.dispose()

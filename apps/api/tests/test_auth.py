@@ -39,9 +39,28 @@ def test_unconfigured_deployment_refuses_writes_rather_than_allowing_them(anon_c
     assert r.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
 
-def test_reads_do_not_require_a_token(client):
-    assert client.get("/api/v2/bookmarks").status_code == status.HTTP_200_OK
-    assert client.get("/api/v2/tags").status_code == status.HTTP_200_OK
+def test_reads_require_a_token_too(client):
+    """Bookmarks belong to a user, so there is no coherent anonymous read.
+
+    "List the bookmarks" has no answer without knowing whose. A public read would either
+    leak every library or silently return one arbitrary person's.
+    """
+    assert client.get("/api/v2/bookmarks").status_code == status.HTTP_401_UNAUTHORIZED
+    assert client.get("/api/v2/tags").status_code == status.HTTP_401_UNAUTHORIZED
+    assert client.get(
+        "/api/v2/bookmarks/lookup", params={"url": "https://example.com/a"}
+    ).status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_health_needs_no_token(client):
+    """Liveness has to be checkable by things that hold no credential."""
+    assert client.get("/api/v2/health").status_code == status.HTTP_200_OK
+
+
+def test_two_tokens_are_two_users(client, auth, other_auth):
+    client.post("/api/v2/bookmarks", json={"url": "https://example.com/a"}, headers=auth)
+    assert client.get("/api/v2/bookmarks", headers=auth).json()["total"] == 1
+    assert client.get("/api/v2/bookmarks", headers=other_auth).json()["total"] == 0
 
 
 def test_write_with_valid_token_succeeds(client, auth):

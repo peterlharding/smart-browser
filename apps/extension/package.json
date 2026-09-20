@@ -1,0 +1,11 @@
+{
+  "name": "@smart-browser/extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome/Firefox extension: save the current tab with tags, against Smart-Browser API v2.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "package": "cd src && zip -r -FS ../dist/smart-browser-extension.zip . -x '*.DS_Store'"
+  }
+}

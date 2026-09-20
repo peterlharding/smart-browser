@@ -1,8 +1,8 @@
 """Request and response models.
 
-The v2 shape, presented over the v1 tables. Field names here are the *target* names
-(created_at, saved_from, site) so that the M2 migration changes the storage without
-changing the contract the browser and extensions are written against.
+`BookmarkOut.id` is the id of *your save* (`user_bookmark`), not of the shared `bookmark`
+row. Clients address their own saves and never the global URL record -- which is what
+keeps one person's library invisible to another (ADR 0001).
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ class BookmarkCreate(BaseModel):
 
 class BookmarkPatch(BaseModel):
     title: str | None = Field(default=None, max_length=1024)
+    notes: str | None = None
     tags: list[str] | None = None
 
 
@@ -39,11 +40,12 @@ class BookmarkOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    url: str | None
+    url: str
     title: str | None
     site: str | None
     saved_from: str | None
     created_at: datetime | None
+    notes: str | None = None
     tags: list[str]
 
 

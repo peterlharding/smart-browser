@@ -9,6 +9,40 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Changed
+
+- **The API now owns a clean database** rather than running against the v1 `bookmarks-pg`
+  tables (ADR 0006). Revisions `0001` and `0002` are replaced by a single revision creating
+  the target schema: identity, the `bookmark` / `user_bookmark` split, a global tag
+  vocabulary with aliases, and tag links carrying provenance.
+- **No-duplicates is now a database constraint.** `UNIQUE (url_hash)` plus
+  `INSERT ... ON CONFLICT DO NOTHING` replaces check-then-insert, so saving the same page
+  any number of times from any number of clients cannot produce a second row.
+- **Reads require a token.** Bookmarks belong to a user, so an anonymous read has no
+  coherent answer. `/health` remains open.
+- `API_TOKENS` accepts `name:token` pairs, so more than one client can act as more than
+  one user before OAuth lands.
+- Tag names are no longer capped at 32 characters, and are no longer stored in `citext` —
+  the application lowercases on every write path, so a plain `UNIQUE` suffices.
+
+### Removed
+
+- `ids.py` and its advisory-lock id allocation, and the URL lock that serialised
+  check-then-insert. Both existed only to work around what the schema now enforces.
+- The URL string fallback and opportunistic hash backfill, which existed to recognise
+  un-normalised v1 rows.
+
+### Added
+
+- **Chrome extension** (`apps/extension/`): MV3, with a save sheet that shows existing tags
+  and offers autocomplete ranked by your own usage. `⌘⇧B` to tag and save, `⌘⇧S` to quick
+  save. Opening the popup is a lookup, never a write.
+- `GET /api/v2/bookmarks/lookup` — read-before-write by URL.
+- Soft delete on saves, with re-saving a deleted page restoring it rather than duplicating.
+- `test_duplication.py` and `test_scoping.py` covering the two guarantees the schema buys.
+- `scripts/version.py` now manages the extension's `package.json` and `manifest.json`,
+  stripping the prerelease suffix for the manifest since Chrome rejects it.
+
 ### Documentation
 
 - Recorded the PostgreSQL version floor the target schema assumes (12+ for generated

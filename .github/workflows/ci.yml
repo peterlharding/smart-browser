@@ -37,6 +37,19 @@ jobs:
       - name: Test
         run: make test
 
+      - name: Extension manifest is valid JSON and matches the release version
+        run: |
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('apps/extension/src/manifest.json'));
+            const pkg = JSON.parse(fs.readFileSync('package.json'));
+            const core = pkg.version.split(/[-+]/)[0];
+            if (manifest.version !== core) {
+              throw new Error(\`manifest \${manifest.version} != release \${core}\`);
+            }
+            if (manifest.manifest_version !== 3) throw new Error('expected MV3');
+          "
+
       - name: OpenAPI contract is up to date
         run: |
           make api-openapi

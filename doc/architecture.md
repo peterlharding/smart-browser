@@ -90,16 +90,16 @@ clause, not a second table.
 `fontawesome`, the table resolves it to `font-awesome`.
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS citext;
-CREATE EXTENSION IF NOT EXISTS vector;      -- pgvector
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- No extensions. Tag names are lowercased by the application on every write path, so a
+-- plain UNIQUE replaces citext; pg_trgm and pgvector arrive with search and M3's
+-- embeddings, alongside the tables that need them (ADR 0006).
 
 -- Identity ------------------------------------------------------------------
 
 CREATE TABLE app_user (
     id           bigserial PRIMARY KEY,
     display_name text,
-    email        citext,                    -- informational only, NEVER a join key
+    email        text,                      -- informational only, NEVER a join key
     avatar_url   text,
     created_at   timestamptz NOT NULL DEFAULT now(),
     last_seen_at timestamptz,
@@ -110,7 +110,7 @@ CREATE TABLE user_identity (
     provider         text   NOT NULL,       -- 'google' | 'github'
     provider_subject text   NOT NULL,       -- Google `sub`, GitHub numeric id: immutable
     user_id          bigint NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
-    email_at_link    citext,                -- what the provider said, for audit only
+    email_at_link    text,                  -- what the provider said, for audit only
     created_at       timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (provider, provider_subject)
 );
@@ -131,17 +131,20 @@ CREATE TABLE bookmark (
 );
 CREATE INDEX bookmark_site_idx ON bookmark (site);
 
-CREATE TABLE bookmark_content (
-    bookmark_id bigint PRIMARY KEY REFERENCES bookmark(id) ON DELETE CASCADE,
-    text        text,
-    tsv         tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(text,''))) STORED,
-    embedding   vector(384),                     -- bge-small-en-v1.5; see plan.md
-    model       text,
-    updated_at  timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX bookmark_content_tsv_idx ON bookmark_content USING gin (tsv);
-CREATE INDEX bookmark_content_emb_idx ON bookmark_content
-    USING hnsw (embedding vector_cosine_ops);
+-- Deferred to M3 with the crawler that fills them, since they are the only tables
+-- needing pgvector:
+--
+-- CREATE TABLE bookmark_content (
+--     bookmark_id bigint PRIMARY KEY REFERENCES bookmark(id) ON DELETE CASCADE,
+--     text        text,
+--     tsv         tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(text,''))) STORED,
+--     embedding   vector(384),                     -- bge-small-en-v1.5; see plan.md
+--     model       text,
+--     updated_at  timestamptz NOT NULL DEFAULT now()
+-- );
+-- CREATE INDEX bookmark_content_tsv_idx ON bookmark_content USING gin (tsv);
+-- CREATE INDEX bookmark_content_emb_idx ON bookmark_content
+--     USING hnsw (embedding vector_cosine_ops);
 
 -- The save: per user --------------------------------------------------------
 
@@ -165,7 +168,7 @@ CREATE INDEX user_bookmark_user_idx ON user_bookmark (user_id, created_at DESC)
 
 CREATE TABLE tag (
     id          bigserial PRIMARY KEY,
-    name        citext      NOT NULL UNIQUE,     -- citext kills the case dupes
+    name        text        NOT NULL UNIQUE,     -- always lowercased on write
     parent_id   bigint      REFERENCES tag(id) ON DELETE SET NULL,
     description text,
     created_at  timestamptz NOT NULL DEFAULT now(),
@@ -174,7 +177,7 @@ CREATE TABLE tag (
 CREATE INDEX tag_name_trgm_idx ON tag USING gin (name gin_trgm_ops);
 
 CREATE TABLE tag_alias (
-    alias  citext PRIMARY KEY,
+    alias  text PRIMARY KEY,
     tag_id bigint NOT NULL REFERENCES tag(id) ON DELETE CASCADE
 );
 
@@ -205,7 +208,7 @@ The target schema assumes **PostgreSQL 12 or newer**, and M3 assumes pgvector 0.
 | Feature | Needs | Used for |
 | --- | --- | --- |
 | `GENERATED ALWAYS AS ... STORED` | PG 12+ | `bookmark_content.tsv` |
-| `citext`, `pg_trgm` | any supported version | tag names, fuzzy tag search |
+| `pg_trgm` | any supported version | fuzzy tag search (deferred with search itself) |
 | pgvector with `hnsw` | pgvector 0.5+ (PG 11+) | embedding search |
 
 The 2025-05-10 dump reports `Dumped from database version 17.4` and
@@ -229,8 +232,12 @@ one rule worth its own test rather than a code review.
 
 ### Other notes
 
-- **`citext` on `tag.name` plus UNIQUE** prevents `Linux`/`linux` recurring; `tag_alias`
-  handles misspellings.
+- **`UNIQUE` on `tag.name`**, with lowercasing enforced on every write path, prevents
+  `Linux`/`linux` recurring; `tag_alias` handles misspellings. No `citext` extension
+  needed (ADR 0006).
+- **`UNIQUE` on `bookmark.url_hash`** is the whole duplication guarantee. Saves go through
+  `INSERT ... ON CONFLICT DO NOTHING` and then read, so the database arbitrates whether a
+  URL is new. Two concurrent saves of one page cannot both conclude it is.
 - **`site` is new and `host` is renamed.** `site` is the registrable domain parsed from the
   URL; `saved_from` keeps `host`'s existing meaning. This is what makes list-by-domain work —
   see audit finding 6.

@@ -33,9 +33,9 @@
         "tags": [
           "bookmarks"
         ],
-        "summary": "Create Bookmark",
-        "description": "Save a page. Idempotent on the URL.\n\nReturns 200 when the bookmark already existed, 201 when it was created. Either way\nany tags in the payload are attached, so re-saving with new tags is an upsert of\ntags rather than an error.",
-        "operationId": "create_bookmark_api_v2_bookmarks_post",
+        "summary": "Save Bookmark",
+        "description": "Save a page.\n\n201 the first time, 200 every time after, never a second row \u2014 whatever the spelling\nof the URL and however many clients call at once. Tags in the payload are merged on\nevery call, so re-saving with new tags adds them rather than failing.",
+        "operationId": "save_bookmark_api_v2_bookmarks_post",
         "parameters": [
           {
             "name": "authorization",
@@ -92,7 +92,7 @@
           "bookmarks"
         ],
         "summary": "List Bookmarks",
-        "description": "List bookmarks.\n\n`mode=all` is the intersection query the tag sidebar is built on -- `python` AND\n`fastapi`, not `python` OR `fastapi`. `untagged=true` is how you work the 7,655-row\nbacklog the audit found.",
+        "description": "List your saves.\n\n`mode=all` is the intersection the tag sidebar is built on \u2014 `python` AND `fastapi`.\n`untagged=true` is how you work the backlog.",
         "operationId": "list_bookmarks_api_v2_bookmarks_get",
         "parameters": [
           {
@@ -195,6 +195,22 @@
               "default": 0,
               "title": "Offset"
             }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
           }
         ],
         "responses": {
@@ -221,21 +237,97 @@
         }
       }
     },
-    "/api/v2/bookmarks/{bookmark_id}": {
+    "/api/v2/bookmarks/lookup": {
+      "get": {
+        "tags": [
+          "bookmarks"
+        ],
+        "summary": "Lookup Bookmark",
+        "description": "Have I saved this page, and with what tags?\n\nA read. `POST /bookmarks` is idempotent and would answer the same question, but it is\na write: a client calling it merely to ask would create a bookmark every time someone\nopened a popup. 404 means not saved, which is a normal answer here.",
+        "operationId": "lookup_bookmark_api_v2_bookmarks_lookup_get",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Url"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookmarkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/bookmarks/{save_id}": {
       "get": {
         "tags": [
           "bookmarks"
         ],
         "summary": "Get Bookmark",
-        "operationId": "get_bookmark_api_v2_bookmarks__bookmark_id__get",
+        "operationId": "get_bookmark_api_v2_bookmarks__save_id__get",
         "parameters": [
           {
-            "name": "bookmark_id",
+            "name": "save_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
-              "title": "Bookmark Id"
+              "title": "Save Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           }
         ],
@@ -267,15 +359,15 @@
           "bookmarks"
         ],
         "summary": "Patch Bookmark",
-        "operationId": "patch_bookmark_api_v2_bookmarks__bookmark_id__patch",
+        "operationId": "patch_bookmark_api_v2_bookmarks__save_id__patch",
         "parameters": [
           {
-            "name": "bookmark_id",
+            "name": "save_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
-              "title": "Bookmark Id"
+              "title": "Save Id"
             }
           },
           {
@@ -333,16 +425,16 @@
           "bookmarks"
         ],
         "summary": "Delete Bookmark",
-        "description": "Delete a bookmark and its tag links.\n\nWARNING: this is a hard delete. The target schema has `deleted_at` and this becomes\na soft delete at M2; until then there is no undo, so the browser should not wire a\none-keystroke delete to this endpoint yet.",
-        "operationId": "delete_bookmark_api_v2_bookmarks__bookmark_id__delete",
+        "description": "Unsave a page.\n\nA soft delete of *your* save. The `bookmark` row and anything crawled for it survive,\nbecause they belong to everyone; and re-saving the page restores this row rather than\ncreating a second one.",
+        "operationId": "delete_bookmark_api_v2_bookmarks__save_id__delete",
         "parameters": [
           {
-            "name": "bookmark_id",
+            "name": "save_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
-              "title": "Bookmark Id"
+              "title": "Save Id"
             }
           },
           {
@@ -379,22 +471,21 @@
         }
       }
     },
-    "/api/v2/bookmarks/{bookmark_id}/tags": {
+    "/api/v2/bookmarks/{save_id}/tags": {
       "post": {
         "tags": [
           "bookmarks"
         ],
         "summary": "Add Tags",
-        "description": "Attach tags.\n\n`source` is accepted and currently discarded: the column arrives in M2. It is in the\ncontract now so the browser and the categoriser can be written against the final\nshape and need no change when the column lands.",
-        "operationId": "add_tags_api_v2_bookmarks__bookmark_id__tags_post",
+        "operationId": "add_tags_api_v2_bookmarks__save_id__tags_post",
         "parameters": [
           {
-            "name": "bookmark_id",
+            "name": "save_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
-              "title": "Bookmark Id"
+              "title": "Save Id"
             }
           },
           {
@@ -448,21 +539,21 @@
         }
       }
     },
-    "/api/v2/bookmarks/{bookmark_id}/tags/{tag_name}": {
+    "/api/v2/bookmarks/{save_id}/tags/{tag_name}": {
       "delete": {
         "tags": [
           "bookmarks"
         ],
         "summary": "Remove Tag",
-        "operationId": "remove_tag_api_v2_bookmarks__bookmark_id__tags__tag_name__delete",
+        "operationId": "remove_tag_api_v2_bookmarks__save_id__tags__tag_name__delete",
         "parameters": [
           {
-            "name": "bookmark_id",
+            "name": "save_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
-              "title": "Bookmark Id"
+              "title": "Save Id"
             }
           },
           {
@@ -521,7 +612,7 @@
           "tags"
         ],
         "summary": "List Tags",
-        "description": "Tags with usage counts.\n\nCounts matter more than the names here: the audit found 10 tags never used and one\nblank tag on 43 bookmarks, and the browser's sidebar needs to rank by usage rather\nthan list 567 entries alphabetically.",
+        "description": "Your tags, with how often you have used them.\n\nThe vocabulary is global (ADR 0002) but the counts are yours: what belongs in an\nautocomplete list is how often *you* reach for a tag. Ranking by usage rather than\nalphabetically is what makes a 567-entry vocabulary usable at all.",
         "operationId": "list_tags_api_v2_tags_get",
         "parameters": [
           {
@@ -563,6 +654,22 @@
               "minimum": 1,
               "default": 500,
               "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           }
         ],
@@ -650,14 +757,7 @@
             "title": "Id"
           },
           "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Url"
           },
           "title": {
@@ -704,6 +804,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
           },
           "tags": {
             "items": {
@@ -769,6 +880,17 @@
               }
             ],
             "title": "Title"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
           },
           "tags": {
             "anyOf": [

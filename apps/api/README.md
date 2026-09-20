@@ -3,41 +3,23 @@
 FastAPI service for Smart-Browser. Mounted at `/api/v2` so it runs alongside the existing
 v1 app — the Chrome and Firefox extensions keep posting to `/xyzzy` until M6 retires it.
 
-## Status: M0
+## Status
 
-This talks to the **existing** database schema (`bookmark` / `tag` / `bookmark_tag` as they
-are today). It does not migrate anything. M2 changes the schema; see `doc/architecture.md`
-for the target and `doc/plan.md` for sequencing.
+Runs against a **new database** built from the target schema (ADR 0006), not the v1
+`bookmarks-pg` tables. There is no data in it until the importer at M2.
 
-What M0 delivers over the v1 endpoints:
+What it gives you:
 
-- **Authentication on every write.** `/xyzzy` has none today.
-- **Idempotent save.** `POST /bookmarks` matches an existing URL and returns 200 rather
-  than creating a duplicate row. 23% of the current corpus is duplicates.
-- **Race-free id allocation.** `SELECT MAX(id)+1` is replaced by real sequences
-  (Alembic revision `0001`); until that is applied, an advisory lock serialises
-  allocation as a fallback.
-- **URL normalisation** with a test suite, which is the foundation of M2's dedupe.
-- **Tag intersection queries** — `?tags=python,fastapi&mode=all` — with the indexes to
-  make them fast.
-
-## Quick start
-
-```bash
-cp .env.example .env      # fill in DB_USER, DB_PASSWORD, API_TOKENS
-make -C ../.. api-install
-make -C ../.. api-test
-make -C ../.. api-dev     # http://127.0.0.1:8000/api/v2/docs
-```
-
-Generate a token:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-With `API_TOKENS` unset, writes return **503**, not 200. An unconfigured deployment should
-be inert rather than open — that failure mode is how `/xyzzy` ended up world-writable.
+- **Authentication on every request**, reads included. Bookmarks belong to a user, so
+  there is no coherent anonymous read. With no tokens configured the API refuses
+  everything rather than allowing it.
+- **Saving cannot duplicate.** `UNIQUE (url_hash)` plus `INSERT ... ON CONFLICT DO
+  NOTHING`: 201 the first time, 200 every time after, never a second row — whatever the
+  URL's spelling and however many clients call at once. The database arbitrates, not this
+  code.
+- **`GET /bookmarks/lookup`** answers "have I saved this?" without writing.
+- **Tag intersection** — `?tags=python,fastapi&mode=all` — and `?untagged=true`.
+- **Per-user isolation.** Every read joins through `user_bookmark` filtered by `user_id`.
 
 ## Tests
 
@@ -70,13 +52,7 @@ requires a clean run. The third-party deprecations we cannot fix are listed expl
 
 ## Migrations
 
-Alembic, in `migrations/`. The DDL lives in `migrations/sql/*.sql` and the revision reads
-it — so the statements stay reviewable as SQL, `psql -f` still works in an emergency, and
-there is one copy of them rather than two.
-
-Revision `0001` is additive only: no column is dropped, renamed or retyped, and no
-constraint is added that current data would violate. The v1 app keeps working with it
-applied.
+Alembic, in `migrations/`. Revision `0001` creates the whole schema on an empty database.
 
 ```sh
 make -C ../.. migrate-status   # what the database is at vs what the code wants
@@ -91,17 +67,8 @@ SELECT current_user, session_user;
 \dt                        -- the Owner column must be you, or you must be superuser
 ```
 
-Run migrations as the **table owner** (`plh`) or a superuser: `CREATE SEQUENCE ... OWNED BY`
-and `ALTER TABLE ... SET DEFAULT` both require ownership, and an unprivileged role fails
-partway with the sequences created but not attached. Everything is `IF NOT EXISTS`, so
-re-running as the owner recovers cleanly.
-
-**The live database has never been stamped by Alembic.** The first run is one of:
-
-```sh
-make -C ../.. migrate                  # applies 0001 and stamps it
-make -C ../.. migrate-stamp REV=0001   # if the SQL was already applied by hand
-```
+The database starts empty. `make migrate` creates every table from scratch, so there is no
+hand-applied state to reconcile and nothing to stamp.
 
 ## Compatibility checks
 
@@ -133,32 +100,26 @@ src/bookmarks_api/
 ├── config.py      settings; the embedding dimension lives here, not in code
 ├── db.py          engine + session
 ├── deps.py        bearer auth, and the current_user seam
-├── ids.py         advisory-lock id allocation (dead once 0001 is applied)
 ├── schema_guard.py  refuses to start against a mismatched database
-├── models.py      SQLAlchemy over the *current* schema
-├── schemas.py     the v2 contract — target field names over v1 storage
+├── models.py      the target schema: bookmark / user_bookmark / tag
+├── schemas.py     the v2 contract
 ├── urlnorm.py     normalisation + hashing; the dedupe foundation
 └── routers/
 ```
 
-`schemas.py` deliberately uses the **target** field names (`created_at`, `saved_from`,
-`site`) rather than the current column names (`used`, `host`, none). M2 changes the storage
-underneath without changing the contract that the browser and extensions are written against.
+`BookmarkOut.id` is the id of *your save* (`user_bookmark`), not of the shared `bookmark`
+row. Clients address their own saves and never the global URL record — which is what keeps
+one person's library invisible to another.
 
-## Known M0 limitations
+## Known limitations
 
-These are deliberate and tracked in `doc/plan.md`:
+Deliberate, and tracked in `doc/plan.md`:
 
-- `DELETE /bookmarks/{id}` is a **hard delete**. `deleted_at` arrives in M2; don't wire a
-  one-keystroke delete to it yet.
-- `?site=` is a `LIKE` over the URL, not an indexed lookup — `site` is derived, not stored,
-  until M2.
-- `source` on `POST /bookmarks/{id}/tags` is accepted and discarded; the column arrives in
-  M2. It is in the contract now so nothing needs changing when it lands.
-- Tags are capped at 32 characters because the current column is `varchar(32)`. Longer tags
-  are rejected with 422 rather than silently truncated. M2 widens it.
-- Idempotency matches on the URL string, not `url_hash`. Two differently-spelled URLs for
-  the same page still create two rows until M2's unique index.
-- **Everything acts as one user.** The pre-migration schema has no ownership columns, so
-  `current_user` returns the configured id. M1 adds `app_user`, OAuth sign-in and a real
-  token lookup; because every handler already takes a user, none of them change.
+- **No sign-in.** A static API token maps to an `app_user` row created on first use. M1
+  replaces that with OAuth through `user_identity`; every handler already takes an
+  `AppUser`, so only `deps.py` changes.
+- **No content, no embeddings, no AI tags.** `bookmark_content` and `tag_centroid` arrive
+  at M3 with the crawler that fills them — they are the only tables needing pgvector.
+- **No data.** The importer from the cleaned-up `bookmarks-pg` is M2.
+- **`source` on tag links is stored but nothing sets it to `ai` yet.** The column is there
+  so M4 needs no migration, and so the UI can distinguish suggestions from choices.

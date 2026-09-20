@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Save with tags</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main id="app">
+      <header>
+        <div id="state" class="state state--pending">Checking…</div>
+        <h1 id="title">…</h1>
+        <p id="site"></p>
+      </header>
+
+      <section id="current" hidden>
+        <h2>Tags on this page</h2>
+        <ul id="current-tags" class="chips"></ul>
+      </section>
+
+      <section>
+        <label for="tags">Add tags</label>
+        <input
+          id="tags"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="python, fastapi"
+        />
+        <ul id="suggestions" class="chips chips--suggest"></ul>
+      </section>
+
+      <footer>
+        <button id="save" type="button" class="primary">Save</button>
+        <a href="#" id="options">Options</a>
+      </footer>
+
+      <p id="message" class="message" hidden></p>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

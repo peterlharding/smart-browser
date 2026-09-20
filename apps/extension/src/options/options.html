@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Smart-Browser Bookmarks — Options</title>
+    <link rel="stylesheet" href="../popup/popup.css" />
+    <style>
+      body { width: 520px; }
+      .field { margin-bottom: 16px; }
+      .hint { color: var(--muted); font-size: 12px; margin: 5px 0 0; }
+      code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1 style="font-size: 15px; margin: 0 0 14px">Smart-Browser Bookmarks</h1>
+
+    <div class="field">
+      <label for="baseUrl">API address</label>
+      <input id="baseUrl" type="url" placeholder="https://bookmarks.performiq.com" />
+      <p class="hint">
+        No trailing path — <code>/api/v2</code> is added automatically.
+        Use <code>http://127.0.0.1:8000</code> against a local <code>make api-dev</code>.
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="token">API token</label>
+      <input id="token" type="password" autocomplete="off" />
+      <p class="hint">
+        One of the values in the server's <code>API_TOKENS</code>. Stored in this browser
+        profile's synced extension storage, which anyone with access to the profile can
+        read — so use a token issued to this client, not a shared one.
+      </p>
+    </div>
+
+    <footer>
+      <button id="save" type="button" class="primary">Save</button>
+      <button id="test" type="button" style="margin-left: 8px">Test connection</button>
+    </footer>
+
+    <p id="message" class="message" hidden></p>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

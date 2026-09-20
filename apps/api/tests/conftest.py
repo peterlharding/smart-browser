@@ -6,8 +6,9 @@ Two suites, deliberately:
     no skips. Everything in `models.py` is plain SQLAlchemy, so the schema builds and the
     route logic -- idempotency, tag intersection, auth -- is exercised for real.
 *   The **postgres** suite (`-m postgres`) runs the same routes against a real Postgres
-    when `TEST_DATABASE_URL` is set, covering what SQLite cannot: advisory-lock id
-    allocation, sequence detection, and the `0001_m0_safety.sql` migration itself.
+    when `TEST_DATABASE_URL` is set, covering what SQLite cannot: that `alembic upgrade
+    head` builds the schema the models describe, and that `UNIQUE (url_hash)` really does
+    reject a concurrent duplicate.
 
 A suite that is skipped by default is a suite that rots, so the fast one is the default
 and the slow one is opt-in rather than conditional.
@@ -29,6 +30,7 @@ from bookmarks_api.db import Base, get_db
 from bookmarks_api.main import app
 
 TEST_TOKEN = "test-token-do-not-use-in-anger"  # noqa: S105
+SECOND_TOKEN = "second-user-token-for-tests"  # noqa: S105
 
 
 @pytest.fixture
@@ -67,10 +69,16 @@ def db(engine) -> Iterator[Session]:
 
 @pytest.fixture
 def settings() -> Settings:
+    """Two tokens, two users.
+
+    Both clients share one `app`, so per-client dependency overrides would clobber each
+    other. They differ by the token they send instead -- which is how real clients differ
+    anyway, so the test is closer to the thing it is testing.
+    """
     return Settings(
         db_user="test",
         db_password="test",
-        api_tokens=TEST_TOKEN,
+        api_tokens=f"tester:{TEST_TOKEN},someone-else:{SECOND_TOKEN}",
         single_user_id="tester",
     )
 
@@ -99,6 +107,17 @@ def anon_client(db: Session) -> Iterator[TestClient]:
 @pytest.fixture
 def auth() -> dict[str, str]:
     return {"Authorization": f"Bearer {TEST_TOKEN}"}
+
+
+@pytest.fixture
+def other_client(client: TestClient) -> TestClient:
+    """The same app; a different caller is a different token, not a different client."""
+    return client
+
+
+@pytest.fixture
+def other_auth() -> dict[str, str]:
+    return {"Authorization": f"Bearer {SECOND_TOKEN}"}
 
 
 @pytest.fixture

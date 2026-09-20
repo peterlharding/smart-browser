@@ -28,6 +28,14 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "apps/api/src/bookmarks_api/__init__.py").write_text(
         '"""Doc."""\n\n__version__ = "0.1.0"\n'
     )
+
+    (tmp_path / "apps/extension/src").mkdir(parents=True)
+    (tmp_path / "apps/extension/package.json").write_text(
+        json.dumps({"name": "ext", "version": "0.1.0"})
+    )
+    (tmp_path / "apps/extension/src/manifest.json").write_text(
+        json.dumps({"manifest_version": 3, "version": "0.1.0"})
+    )
     return tmp_path
 
 
@@ -80,6 +88,36 @@ def test_set_rejects_a_non_semver_version(repo):
 def test_set_accepts_a_prerelease(repo):
     assert run(repo, "set", "1.0.0-rc.1").returncode == 0
     assert run(repo, "check").returncode == 0
+
+
+def test_manifest_gets_the_numeric_core_of_a_prerelease(repo):
+    """Chrome rejects a manifest version with a prerelease suffix outright."""
+    run(repo, "set", "1.0.0-rc.1")
+
+    manifest = json.loads((repo / "apps/extension/src/manifest.json").read_text())
+    assert manifest["version"] == "1.0.0"
+
+    # The extension's package.json keeps the full semver; only the manifest is stripped.
+    pkg = json.loads((repo / "apps/extension/package.json").read_text())
+    assert pkg["version"] == "1.0.0-rc.1"
+
+    assert run(repo, "check").returncode == 0
+
+
+def test_manifest_drift_is_reported(repo):
+    (repo / "apps/extension/src/manifest.json").write_text(
+        json.dumps({"manifest_version": 3, "version": "0.9.9"})
+    )
+    result = run(repo, "check")
+    assert result.returncode == 1
+    assert "manifest.json" in result.stderr
+
+
+def test_manifest_keeps_other_fields(repo):
+    run(repo, "set", "2.0.0")
+    manifest = json.loads((repo / "apps/extension/src/manifest.json").read_text())
+    assert manifest["manifest_version"] == 3
+    assert manifest["version"] == "2.0.0"
 
 
 def test_missing_follower_is_not_drift(repo):

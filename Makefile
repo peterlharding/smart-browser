@@ -20,7 +20,8 @@ help:  ## Show this help
 # -----------------------------------------------------------------------------
 
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
-        api-lint api-openapi test test-pg migrate migrate-status migrate-stamp
+        api-lint api-openapi test test-api test-scripts test-ext test-pg \
+        migrate migrate-status migrate-stamp
 
 
 # --- the release gate -------------------------------------------------------
@@ -43,9 +44,16 @@ lint-md:  ## Lint every markdown file
 
 # --- tests ------------------------------------------------------------------
 
-test:  ## Run all tests that need no infrastructure
+test: test-api test-scripts test-ext  ## Run all tests that need no infrastructure
+
+test-api:  ## API suite (SQLite, no infrastructure)
 	cd apps/api && .venv/bin/pytest -q
+
+test-scripts:  ## Tests for the release tooling
 	apps/api/.venv/bin/pytest scripts/tests -q
+
+test-ext:  ## Extension suite (node --test, no dependencies)
+	node --test apps/extension/test/*.test.js
 
 test-pg:  ## Run the Postgres suite (needs TEST_DATABASE_URL)
 	@test -n "$(TEST_DATABASE_URL)" || \

@@ -19,13 +19,17 @@ class Settings(BaseSettings):
     db_user: str = ""
     db_password: str = ""
 
-    # Auth. Comma-separated bearer tokens accepted on writes.
-    # Empty means writes are refused outright -- deliberately not "writes are open",
-    # which is how /xyzzy ended up public.
+    # Bearer tokens, comma-separated, each optionally naming the user it belongs to:
+    #
+    #     API_TOKENS=plh:s3cret,alice:t0ken     -> two users
+    #     API_TOKENS=s3cret                     -> one user, named by single_user_id
+    #
+    # Empty means every request is refused -- deliberately not "everything is open",
+    # which is how the v1 /xyzzy endpoint ended up public.
     api_tokens: str = ""
 
-    # M0 only: the pre-migration schema has no ownership columns, so every request acts
-    # as this identity. M1 replaces it with token -> app_user (ADR 0001, ADR 0003).
+    # The display_name of the app_user row a bare API token maps to, created on first
+    # use. M1 replaces this with OAuth identities resolving through user_identity.
     single_user_id: str = "plh"
 
     # Refuse to start when the database is not at the Alembic revision this code
@@ -46,8 +50,28 @@ class Settings(BaseSettings):
         )
 
     @property
+    def token_map(self) -> dict[str, str]:
+        """Token -> the display name of the `app_user` it acts as.
+
+        A stand-in for real sign-in until M1: an OAuth identity will resolve through
+        `user_identity` to the same table. Tokens are the only credential a browser
+        extension can carry without an interactive login, so they outlive that change.
+        """
+        mapping: dict[str, str] = {}
+        for entry in self.api_tokens.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            name, sep, token = entry.partition(":")
+            if sep and token.strip():
+                mapping[token.strip()] = name.strip() or self.single_user_id
+            else:
+                mapping[entry] = self.single_user_id
+        return mapping
+
+    @property
     def token_set(self) -> frozenset[str]:
-        return frozenset(t.strip() for t in self.api_tokens.split(",") if t.strip())
+        return frozenset(self.token_map)
 
 
 @lru_cache

@@ -27,7 +27,7 @@ def test_saving_the_same_url_twice_does_not_duplicate(client, auth):
     assert first.status_code == status.HTTP_201_CREATED
     assert second.status_code == status.HTTP_200_OK
     assert first.json()["id"] == second.json()["id"]
-    assert client.get("/api/v2/bookmarks").json()["total"] == 1
+    assert client.get("/api/v2/bookmarks", headers=auth).json()["total"] == 1
 
 
 def test_urls_differing_only_by_tracking_params_are_the_same_bookmark(client, auth):
@@ -35,13 +35,13 @@ def test_urls_differing_only_by_tracking_params_are_the_same_bookmark(client, au
     second = post(client, auth, url="https://example.com/a?utm_source=newsletter")
 
     assert second.status_code == status.HTTP_200_OK
-    assert client.get("/api/v2/bookmarks").json()["total"] == 1
+    assert client.get("/api/v2/bookmarks", headers=auth).json()["total"] == 1
 
 
 def test_urls_differing_by_a_real_param_are_distinct(client, auth):
     post(client, auth, url="https://example.com/a?id=1")
     post(client, auth, url="https://example.com/a?id=2")
-    assert client.get("/api/v2/bookmarks").json()["total"] == 2
+    assert client.get("/api/v2/bookmarks", headers=auth).json()["total"] == 2
 
 
 def test_resaving_with_new_tags_adds_them(client, auth):
@@ -70,12 +70,20 @@ def test_invalid_url_is_rejected(client, auth):
 # --- derived fields ----------------------------------------------------------
 
 
-def test_site_is_the_registrable_domain_not_the_posting_host(client, auth):
-    """`host` in the v1 schema holds the poster, not the site -- see audit finding 6."""
+def test_site_is_the_registrable_domain_not_the_posting_client(client, auth):
+    """These were the same column in the v1 schema, which is why list-by-domain never worked."""
     r = post(client, auth, url="https://docs.python.org/3/library/", saved_from="AASDev")
     body = r.json()
     assert body["site"] == "python.org"
     assert body["saved_from"] == "AASDev"
+
+
+def test_site_filter_is_an_exact_match_on_the_stored_domain(client, auth):
+    post(client, auth, url="https://docs.python.org/3/")
+    post(client, auth, url="https://pypi.org/project/x/")
+    assert client.get(
+        "/api/v2/bookmarks", params={"site": "python.org"}, headers=auth
+    ).json()["total"] == 1
 
 
 # --- tag filtering -----------------------------------------------------------
@@ -90,19 +98,23 @@ def _seed(client, auth):
 
 def test_mode_all_is_the_intersection(client, auth):
     _seed(client, auth)
-    r = client.get("/api/v2/bookmarks", params={"tags": "python,fastapi", "mode": "all"})
+    r =client.get(
+        "/api/v2/bookmarks", params={"tags": "python,fastapi", "mode": "all"}, headers=auth
+    )
     assert r.json()["total"] == 1
 
 
 def test_mode_any_is_the_union(client, auth):
     _seed(client, auth)
-    r = client.get("/api/v2/bookmarks", params={"tags": "python,javascript", "mode": "any"})
+    r =client.get(
+        "/api/v2/bookmarks", params={"tags": "python,javascript", "mode": "any"}, headers=auth
+    )
     assert r.json()["total"] == 3
 
 
 def test_untagged_filter_finds_the_backlog(client, auth):
     _seed(client, auth)
-    r = client.get("/api/v2/bookmarks", params={"untagged": True})
+    r = client.get("/api/v2/bookmarks", params={"untagged": True}, headers=auth)
     body = r.json()
     assert body["total"] == 1
     assert body["items"][0]["url"] == "https://example.com/4"
@@ -112,14 +124,18 @@ def test_text_search_matches_title_or_url(client, auth):
     post(client, auth, url="https://example.com/x", title="Postgres tuning")
     post(client, auth, url="https://postgresql.org/docs", title="Docs")
 
-    assert client.get("/api/v2/bookmarks", params={"q": "postgres"}).json()["total"] == 2
-    assert client.get("/api/v2/bookmarks", params={"q": "tuning"}).json()["total"] == 1
+    assert client.get(
+        "/api/v2/bookmarks", params={"q": "postgres"}, headers=auth
+    ).json()["total"] == 2
+    assert client.get(
+        "/api/v2/bookmarks", params={"q": "tuning"}, headers=auth
+    ).json()["total"] == 1
 
 
 def test_pagination_reports_total_beyond_the_page(client, auth):
     for i in range(5):
         post(client, auth, url=f"https://example.com/{i}")
-    body = client.get("/api/v2/bookmarks", params={"limit": 2}).json()
+    body = client.get("/api/v2/bookmarks", params={"limit": 2}, headers=auth).json()
     assert body["total"] == 5
     assert len(body["items"]) == 2
     assert body["limit"] == 2
@@ -164,23 +180,104 @@ def test_removing_an_absent_tag_is_404(client, auth):
     assert r.status_code == status.HTTP_404_NOT_FOUND
 
 
-def test_tag_longer_than_the_column_is_rejected_not_truncated(client, auth):
-    """The current column is varchar(32). Silent truncation would corrupt the vocabulary."""
-    r = post(client, auth, url="https://example.com/a", tags=["x" * 33])
-    assert r.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+def test_long_tags_are_accepted_now_the_column_is_text(client, auth):
+    """The varchar(32) cap was a v1 artefact; `tag.name` is text on the clean schema."""
+    long_tag = "x" * 80
+    r = post(client, auth, url="https://example.com/a", tags=[long_tag])
+    assert r.json()["tags"] == [long_tag]
 
 
-def test_delete_removes_the_bookmark_and_its_links(client, auth, db):
-    from bookmarks_api.models import BookmarkTag
+def test_blank_tags_are_rejected(client, auth):
+    """One blank tag on 43 bookmarks is exactly how the v1 vocabulary decayed."""
+    r = client.post(
+        "/api/v2/bookmarks/1/tags", json={"tags": ["  "]}, headers=auth
+    )
+    assert r.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_CONTENT)
+
+
+def test_delete_hides_the_save_but_keeps_the_url_record(client, auth, db):
+    """Soft delete: the shared bookmark row belongs to everyone, your save does not."""
+    from bookmarks_api.models import Bookmark
 
     created = post(client, auth, url="https://example.com/a", tags=["python"]).json()
     assert client.delete(
         f"/api/v2/bookmarks/{created['id']}", headers=auth
     ).status_code == status.HTTP_204_NO_CONTENT
 
-    assert client.get(f"/api/v2/bookmarks/{created['id']}").status_code == 404
-    assert db.query(BookmarkTag).count() == 0
+    assert client.get(f"/api/v2/bookmarks/{created['id']}", headers=auth).status_code == 404
+    assert client.get("/api/v2/bookmarks", headers=auth).json()["total"] == 0
+    assert db.query(Bookmark).count() == 1
 
 
-def test_missing_bookmark_is_404(client):
-    assert client.get("/api/v2/bookmarks/999999").status_code == status.HTTP_404_NOT_FOUND
+def test_resaving_a_deleted_page_restores_it(client, auth):
+    created = post(client, auth, url="https://example.com/a").json()
+    client.delete(f"/api/v2/bookmarks/{created['id']}", headers=auth)
+
+    again = post(client, auth, url="https://example.com/a")
+    assert again.status_code == status.HTTP_201_CREATED
+    assert again.json()["id"] == created["id"], "restored, not duplicated"
+    assert client.get("/api/v2/bookmarks", headers=auth).json()["total"] == 1
+
+
+def test_missing_bookmark_is_404(client, auth):
+    assert client.get(
+        "/api/v2/bookmarks/999999", headers=auth
+    ).status_code == status.HTTP_404_NOT_FOUND
+
+
+# --- lookup ------------------------------------------------------------------
+
+
+def test_lookup_finds_a_saved_url_with_its_tags(client, auth):
+    post(client, auth, url="https://example.com/a", tags=["python"])
+    r =client.get(
+        "/api/v2/bookmarks/lookup", params={"url": "https://example.com/a"}, headers=auth
+    )
+    assert r.status_code == status.HTTP_200_OK
+    assert r.json()["tags"] == ["python"]
+
+
+def test_lookup_matches_through_normalisation(client, auth):
+    post(client, auth, url="https://example.com/docs")
+    r = client.get(
+        "/api/v2/bookmarks/lookup",
+        params={"url": "HTTPS://Example.COM:443/docs/?utm_source=x#frag"},
+        headers=auth,
+    )
+    assert r.status_code == status.HTTP_200_OK
+
+
+def test_lookup_of_an_unsaved_url_is_404(client, auth):
+    r =client.get(
+        "/api/v2/bookmarks/lookup", params={"url": "https://example.com/never"}, headers=auth
+    )
+    assert r.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_lookup_does_not_create_anything(client, auth):
+    """The whole point: asking must not be answering with a side effect."""
+    client.get("/api/v2/bookmarks/lookup", params={"url": "https://example.com/new"}, headers=auth)
+    client.get("/api/v2/bookmarks/lookup", params={"url": "https://example.com/new"}, headers=auth)
+    assert client.get("/api/v2/bookmarks", headers=auth).json()["total"] == 0
+
+
+def test_lookup_is_not_shadowed_by_the_id_route(client, auth):
+    """Regression guard: declared after /{bookmark_id}, this would 422 on "lookup"."""
+    post(client, auth, url="https://example.com/a")
+    r =client.get(
+        "/api/v2/bookmarks/lookup", params={"url": "https://example.com/a"}, headers=auth
+    )
+    assert r.status_code != status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+def test_lookup_rejects_an_invalid_url(client, auth):
+    r = client.get("/api/v2/bookmarks/lookup", params={"url": "   "}, headers=auth)
+    assert r.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+def test_lookup_requires_a_token(client, auth):
+    """It reveals whether *you* saved a page, so it needs to know who you are."""
+    post(client, auth, url="https://example.com/a")
+    assert client.get(
+        "/api/v2/bookmarks/lookup", params={"url": "https://example.com/a"}
+    ).status_code == status.HTTP_401_UNAUTHORIZED
