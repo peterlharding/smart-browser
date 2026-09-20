@@ -70,26 +70,49 @@ def main() -> int:
 
     try:
         engine = create_engine(url)
-        with engine.connect() as conn:
-            ident = conn.execute(
-                text(
-                    "SELECT current_database(), current_user, version(), "
-                    "       inet_server_addr()::text, inet_server_port(), "
-                    "       current_setting('data_directory', true), "
-                    "       current_schema(), current_setting('search_path')"
-                )
-            ).one()
+        conn_cm = engine.connect()
+    except Exception as exc:  # noqa: BLE001 - diagnostic; report anything
+        print(f"\ncould not connect: {type(exc).__name__}: {exc}")
+        return 1
 
-            print("\nthe server actually reached says:")
-            print(f"  database        {ident[0]}")
-            print(f"  user            {ident[1]}")
-            print(f"  server          {ident[2].split(',')[0]}")
-            print(f"  listening on    {ident[3]}:{ident[4]}")
-            # The one fingerprint no two running instances can share.
-            print(f"  data_directory  {ident[5] or '(not readable by this role)'}")
-            print(f"  current_schema  {ident[6]}")
-            print(f"  search_path     {ident[7]}")
+    with conn_cm as conn:
+        print("\nthe server actually reached says:")
+        for label, sql in [
+            ("database", "SELECT current_database()"),
+            ("database oid", "SELECT oid FROM pg_database WHERE datname = current_database()"),
+            ("user", "SELECT current_user"),
+            ("server", "SELECT split_part(version(), ',', 1)"),
+            ("listening on", "SELECT inet_server_addr()::text || ':' || inet_server_port()"),
+            # Privilege-free, and no two running instances share it -- the fingerprint
+            # data_directory was meant to be, without needing pg_read_all_settings.
+            ("started at", "SELECT pg_postmaster_start_time()"),
+            ("data_directory", "SELECT setting FROM pg_settings WHERE name = 'data_directory'"),
+            ("current_schema", "SELECT current_schema()"),
+            ("search_path", "SELECT current_setting('search_path')"),
+        ]:
+            # Every probe stands alone. A diagnostic that aborts on the first thing this
+            # role may not read is useless exactly when it is needed.
+            try:
+                result = conn.execute(text(sql)).scalar()
+                shown = "(not available)" if result is None else str(result)
+                print(f"  {label:<15} {shown}")
+            except Exception as exc:  # noqa: BLE001
+                conn.rollback()
+                reason = type(exc).__name__
+                if "InsufficientPrivilege" in str(exc) or "permission denied" in str(exc):
+                    reason = "permission denied for this role"
+                print(f"  {label:<15} (unavailable: {reason})")
 
+        try:
+            names = conn.execute(
+                text("SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY 1")
+            ).scalars().all()
+            print(f"\ndatabases on this server: {', '.join(names)}")
+        except Exception as exc:  # noqa: BLE001
+            conn.rollback()
+            print(f"\ndatabases on this server: (unavailable: {type(exc).__name__})")
+
+        try:
             rows = conn.execute(
                 text(
                     "SELECT schemaname, tablename, tableowner FROM pg_tables "
@@ -97,27 +120,36 @@ def main() -> int:
                     "ORDER BY schemaname, tablename"
                 )
             ).all()
+        except Exception as exc:  # noqa: BLE001
+            conn.rollback()
+            print(f"\ncould not list tables: {type(exc).__name__}: {exc}")
+            return 1
 
-            print(f"\ntables visible to this connection: {len(rows)}")
-            for schema, table, owner in rows:
-                mark = " " if table in EXPECTED_TABLES else "?"
-                print(f"  {mark} {schema}.{table}  (owner {owner})")
+        print(f"\ntables in this database: {len(rows)}")
+        for schema, table, owner in rows:
+            mark = " " if table in EXPECTED_TABLES else "?"
+            print(f"  {mark} {schema}.{table}  (owner {owner})")
 
-            found = {t for _, t, _ in rows}
-            missing = [t for t in EXPECTED_TABLES if t not in found]
-            if missing:
-                print(f"\n  MISSING: {', '.join(missing)}")
+        found = {table for _, table, _ in rows}
+        missing = [table for table in EXPECTED_TABLES if table not in found]
+        if missing:
+            print(f"\n  MISSING: {', '.join(missing)}")
 
-            if "alembic_version" in found:
+        if "alembic_version" in found:
+            try:
                 rev = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-                ok = "matches" if rev == REQUIRED_SCHEMA_REVISION else "DOES NOT MATCH"
-                print(f"\nalembic_version: {rev}  ({ok} the {REQUIRED_SCHEMA_REVISION} "
-                      f"this code requires)")
-            else:
-                print("\nalembic_version: absent — nothing has migrated this database")
-    except Exception as exc:  # noqa: BLE001 - this is a diagnostic; report anything
-        print(f"\ncould not connect: {type(exc).__name__}: {exc}")
-        return 1
+                verdict = "matches" if rev == REQUIRED_SCHEMA_REVISION else "DOES NOT MATCH"
+                print(
+                    f"\nalembic_version: {rev}  ({verdict} the "
+                    f"{REQUIRED_SCHEMA_REVISION} this code requires)"
+                )
+            except Exception as exc:  # noqa: BLE001
+                conn.rollback()
+                print(f"\nalembic_version: unreadable ({type(exc).__name__})")
+        else:
+            print("\nalembic_version: absent -- nothing has migrated this database")
+            print("  A migration that logged 'Running upgrade' but left no alembic_version")
+            print("  did not commit. Re-run it and read everything it prints.")
 
     return 0
 
