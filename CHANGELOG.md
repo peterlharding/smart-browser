@@ -11,6 +11,14 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Changed
 
+- **The database is now called `page_history`**, and the default connection points at a
+  stock local Postgres on 5432. The previous defaults — port 5436, database `bookmarks` —
+  were the predecessor's Docker instance and its database, so a default `make migrate`
+  would have run DDL against a system this project has no business touching.
+- Schema-guard errors now name the database, host and port they are talking about. Being
+  pointed at the wrong database is the commonest cause of both of them, and a message that
+  omits which database it means sends you to the migrations instead of the connection
+  string.
 - **Treated as a new implementation** rather than a successor (ADR 0007). The importer
   milestone and the `/xyzzy` retirement milestone are both out of scope: the predecessor
   will be brought into line with this project rather than the reverse, and nothing here

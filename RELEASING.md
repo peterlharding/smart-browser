@@ -78,7 +78,7 @@ release cannot be cut with an API that reports the wrong version.
    covers the id allocation and migration behaviour SQLite cannot:
 
    ```sh
-   TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5436/bookmarks_test \
+   TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/page_history_test \
      make test-pg
    ```
 

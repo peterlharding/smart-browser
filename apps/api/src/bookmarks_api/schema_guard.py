@@ -45,18 +45,24 @@ def verify(engine: Engine, *, required: str = REQUIRED_SCHEMA_REVISION) -> None:
         return
 
     found = current_revision(engine)
+    # Name the database in both messages. The commonest cause of either is being pointed
+    # at the wrong one, and a message that does not say which database it is talking
+    # about sends you looking at migrations instead of at your connection string.
+    where = f"{engine.url.database!r} on {engine.url.host}:{engine.url.port}"
 
     if found is None:
         raise SchemaMismatch(
-            "This database has no schema. Create it with:\n"
+            f"Database {where} has no schema. Create it with:\n"
             "    alembic -c apps/api/alembic.ini upgrade head\n"
             "If the tables exist but Alembic has never recorded a revision for them:\n"
-            f"    alembic -c apps/api/alembic.ini stamp {required}"
+            f"    alembic -c apps/api/alembic.ini stamp {required}\n"
+            "If that is not the database you meant, check DB_NAME, DB_HOST and DB_PORT."
         )
 
     if found != required:
         raise SchemaMismatch(
-            f"Database is at Alembic revision {found}, but this code requires {required}.\n"
+            f"Database {where} is at Alembic revision {found}, "
+            f"but this code requires {required}.\n"
             "Run:  alembic -c apps/api/alembic.ini upgrade head\n"
             "If the database is ahead, deploy the matching version of the API instead of "
             "downgrading the schema."

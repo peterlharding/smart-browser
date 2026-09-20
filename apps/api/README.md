@@ -36,7 +36,7 @@ id allocation, and a full `alembic upgrade head` / `downgrade base` round trip a
 v1-shaped schema:
 
 ```sh
-TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5436/bookmarks_test \
+TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/page_history_test \
   make -C ../.. test-pg
 ```
 

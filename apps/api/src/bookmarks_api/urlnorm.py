@@ -92,9 +92,9 @@ def url_hash(url: str) -> bytes:
 def site_of(url: str) -> str | None:
     """Registrable domain, e.g. ``docs.python.org`` -> ``python.org``.
 
-    This is the field ``/bookmarks/list-by-domain`` always meant. The existing `host`
-    column holds the *poster's* hostname (`AASDev` on 8,661 rows), which is a different
-    thing entirely -- see doc/audit-2026-09-20.md finding 6.
+    The domain a page belongs to, which is a different fact from the client that saved
+    it -- ``saved_from``. Conflating the two is why the predecessor's list-by-domain
+    never worked (audit finding 6).
     """
     result = _extract(url)
     return result.top_domain_under_public_suffix or None

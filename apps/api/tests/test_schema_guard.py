@@ -96,3 +96,22 @@ def test_ahead_database_is_also_a_mismatch(monkeypatch):
         verify(engine, required="0001")
     assert "deploy the matching version" in str(excinfo.value)
     engine.dispose()
+
+
+def test_errors_name_the_database_they_are_talking_about(monkeypatch):
+    """Being pointed at the wrong database is the commonest cause of both errors.
+
+    Without the name in the message you go looking at migrations instead of at your
+    connection string -- which is exactly the wrong place.
+    """
+    engine = create_engine("postgresql+psycopg://u:p@db.example:5432/wrong_one")
+    monkeypatch.setattr(schema_guard, "current_revision", lambda _: None)
+
+    with pytest.raises(SchemaMismatch) as excinfo:
+        verify(engine)
+
+    message = str(excinfo.value)
+    assert "wrong_one" in message
+    assert "db.example" in message
+    assert "DB_NAME" in message
+    engine.dispose()

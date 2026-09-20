@@ -12,10 +12,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Database
+    # Database.
+    #
+    # The defaults deliberately point at a stock local Postgres and a database named for
+    # this project. An earlier default of port 5436 / "bookmarks" was the predecessor's
+    # Docker instance and its database, which meant a default `make migrate` would have
+    # run DDL against a system this project has no business touching.
     db_host: str = "127.0.0.1"
-    db_port: int = 5436
-    db_name: str = "bookmarks"
+    db_port: int = 5432
+    db_name: str = "page_history"
     db_user: str = ""
     db_password: str = ""
 
