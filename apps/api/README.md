@@ -83,6 +83,11 @@ make -C ../.. migrate-status   # what the database is at vs what the code wants
 make -C ../.. migrate          # bring it to head
 ```
 
+Run migrations as the **table owner** (`plh`) or a superuser: `CREATE SEQUENCE ... OWNED BY`
+and `ALTER TABLE ... SET DEFAULT` both require ownership, and an unprivileged role fails
+partway with the sequences created but not attached. Everything is `IF NOT EXISTS`, so
+re-running as the owner recovers cleanly.
+
 **The live database has never been stamped by Alembic.** The first run is one of:
 
 ```sh

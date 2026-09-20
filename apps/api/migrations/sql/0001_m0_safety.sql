@@ -19,6 +19,12 @@
 -- There is no BEGIN/COMMIT here: Alembic owns the transaction, and everything is guarded
 -- by IF NOT EXISTS so a partial apply is safe to re-run.
 --
+-- PRECONDITION: run this as the table owner (plh) or a superuser.
+--   CREATE SEQUENCE ... OWNED BY and ALTER TABLE ... SET DEFAULT both require ownership.
+--   Running as an unprivileged role fails partway, leaving sequences created but not
+--   attached. Everything is IF NOT EXISTS, so re-running as the owner recovers cleanly.
+--   Check with:  \dt  -- the Owner column must match your session_user, or you are super.
+--
 -- Rollback is at the bottom, commented out.
 
 -- 1. Sequences ---------------------------------------------------------------
