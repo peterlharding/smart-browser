@@ -50,7 +50,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 ## Configuration
 
 Two `.env` files are read, both by absolute path so it makes no difference which
-directory you run from — `alembic -c apps/api/alembic.ini` from the repo root picks up
+directory you run from — `alembic -c db/alembic.ini` from the repo root picks up
 exactly what `make migrate` does:
 
 | File | For |
@@ -196,7 +196,7 @@ requires a clean run. The third-party deprecations we cannot fix are listed expl
 
 ## Migrations
 
-Alembic, in `migrations/`. Revision `0001` creates the whole schema on an empty database.
+Alembic, in `db/migrations/` at the repo root — the schema belongs to the project, not to this service. Revision `0001` creates the whole schema on an empty database.
 
 ```sh
 make -C ../.. migrate-status   # what the database is at vs what the code wants

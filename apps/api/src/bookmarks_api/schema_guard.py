@@ -53,9 +53,9 @@ def verify(engine: Engine, *, required: str = REQUIRED_SCHEMA_REVISION) -> None:
     if found is None:
         raise SchemaMismatch(
             f"Database {where} has no schema. Create it with:\n"
-            "    alembic -c apps/api/alembic.ini upgrade head\n"
+            "    alembic -c db/alembic.ini upgrade head\n"
             "If the tables exist but Alembic has never recorded a revision for them:\n"
-            f"    alembic -c apps/api/alembic.ini stamp {required}\n"
+            f"    alembic -c db/alembic.ini stamp {required}\n"
             "If that is not the database you meant, check DB_NAME, DB_HOST and DB_PORT."
         )
 
@@ -63,7 +63,7 @@ def verify(engine: Engine, *, required: str = REQUIRED_SCHEMA_REVISION) -> None:
         raise SchemaMismatch(
             f"Database {where} is at Alembic revision {found}, "
             f"but this code requires {required}.\n"
-            "Run:  alembic -c apps/api/alembic.ini upgrade head\n"
+            "Run:  alembic -c db/alembic.ini upgrade head\n"
             "If the database is ahead, deploy the matching version of the API instead of "
             "downgrading the schema."
         )

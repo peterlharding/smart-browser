@@ -9,6 +9,26 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Migrations were being silently rolled back.** `alembic upgrade head` logged
+  `Running upgrade -> 0001`, exited 0, printed no error, and left an empty database. The
+  connection diagnostic added alongside the `page_history` rename executed on the
+  migration's *own* connection before `context.configure()`. SQLAlchemy 2.0 opens a
+  transaction on a connection's first `execute()`, and alembic's `begin_transaction()`
+  returns a no-op when handed a connection already in one — so nothing committed and
+  closing the connection discarded the whole migration. The diagnostic now runs on a
+  connection of its own.
+- The `tag_name_not_blank` check used `btrim`, which is Postgres-only and blocked running
+  the migration against anything else. Now `trim`, which is standard SQL.
+- `env.py` no longer overwrites an explicitly configured `sqlalchemy.url`, so alembic can
+  be pointed at a scratch database.
+- The alembic tree moved to `db/` at the repo root — the schema belongs to the project
+  rather than to one service. `config.ALEMBIC_INI` and `config.MIGRATIONS_DIR` name its
+  location once, so moving it again is a single edit rather than a hunt through tests,
+  Makefile targets and error messages.
+- Added `make migrate-revision M="..."`.
+
 ### Changed
 
 - **Python tooling moved to [uv](https://docs.astral.sh/uv/)**, matching how these

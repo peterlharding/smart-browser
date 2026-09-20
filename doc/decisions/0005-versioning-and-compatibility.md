@@ -30,7 +30,7 @@ What enforces compatibility is a check.
 
 Three separate concerns, handled three ways.
 
-**1. Schema — Alembic revisions, not versions.** `apps/api/migrations/` is an Alembic tree.
+**1. Schema — Alembic revisions, not versions.** `db/migrations/` is an Alembic tree.
 The DDL stays in `migrations/sql/*.sql` so it is reviewable as SQL and `psql -f` still works
 in an emergency; the revision reads that file, which keeps one copy of the statements.
 

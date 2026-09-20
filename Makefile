@@ -33,7 +33,7 @@ help:  ## Show this help
 
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
         api-lint api-openapi test test-api test-scripts test-ext test-pg \
-        migrate migrate-status migrate-stamp db-connect db-doctor
+        migrate migrate-status migrate-revision migrate-stamp db-connect db-doctor
 
 
 # --- the release gate -------------------------------------------------------
@@ -91,15 +91,23 @@ api-openapi:  ## Regenerate the committed OpenAPI contract
 	@echo "wrote packages/shared-types/openapi.json"
 	@git diff --stat packages/shared-types/openapi.json
 
+# The alembic tree is at db/, not under apps/api: the schema belongs to the project, not
+# to one service. `--project apps/api` still supplies the environment alembic runs in.
+ALEMBIC := $(UV) run alembic -c db/alembic.ini
+
 migrate:  ## Bring the database to the revision this code requires
-	cd apps/api && uv run alembic upgrade head
+	$(ALEMBIC) upgrade head
 
 migrate-status:  ## Show the database's current revision against the code's head
-	cd apps/api && uv run alembic current && uv run alembic heads
+	$(ALEMBIC) current && $(ALEMBIC) heads
 
-migrate-stamp:  ## Record a revision as applied WITHOUT running it (for a hand-applied migration)
+migrate-revision:  ## New empty revision: make migrate-revision M="what it does"
+	@test -n "$(M)" || { echo 'usage: make migrate-revision M="what it does"'; exit 1; }
+	$(ALEMBIC) revision -m "$(M)"
+
+migrate-stamp:  ## Record a revision as applied WITHOUT running it
 	@test -n "$(REV)" || { echo "usage: make migrate-stamp REV=0001"; exit 1; }
-	cd apps/api && uv run alembic stamp $(REV)
+	$(ALEMBIC) stamp $(REV)
 
 db-doctor:  ## Show which database the settings actually reach, and what is in it
 	cd apps/api && uv run python -m bookmarks_api.doctor

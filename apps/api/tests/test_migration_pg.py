@@ -8,19 +8,19 @@ no-duplicates promise rather than the application being careful.
 Never point TEST_DATABASE_URL at a real database -- these tests create and drop tables.
 """
 
-from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
+from bookmarks_api.config import ALEMBIC_INI, MIGRATIONS_DIR
 from bookmarks_api.schema_guard import REQUIRED_SCHEMA_REVISION, current_revision, verify
 from bookmarks_api.urlnorm import url_hash
 
 pytestmark = pytest.mark.postgres
 
-API_ROOT = Path(__file__).resolve().parent.parent
+
 TABLES = [
     "app_user", "user_identity", "bookmark", "user_bookmark",
     "tag", "tag_alias", "bookmark_tag",
@@ -30,8 +30,8 @@ TABLES = [
 def alembic_config(url: str):
     from alembic.config import Config
 
-    cfg = Config(str(API_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(API_ROOT / "migrations"))
+    cfg = Config(str(ALEMBIC_INI))
+    cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
     cfg.set_main_option("sqlalchemy.url", url)
     return cfg
 
@@ -57,9 +57,20 @@ def migrated(pg_url):
 
 
 def test_upgrade_creates_every_table(migrated):
+    """The behavioural half of the env.py transaction guard.
+
+    A migration that executes anything on its own connection before context.configure()
+    is rolled back on close while still logging success and exiting 0, so "alembic said
+    it worked" proves nothing. This is what proves it. SQLite cannot stand in: alembic
+    uses non-transactional DDL there and commits regardless.
+    """
     _, engine = migrated
     present = set(inspect(engine).get_table_names())
-    assert set(TABLES) <= present
+    missing = set(TABLES) - present
+    assert not missing, (
+        f"upgrade reported success but {sorted(missing)} are absent -- "
+        f"the migration was almost certainly rolled back, see test_migration_env.py"
+    )
 
 
 def test_upgrade_stamps_the_revision_the_code_requires(migrated):

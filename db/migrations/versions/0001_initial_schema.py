@@ -97,7 +97,7 @@ def upgrade() -> None:
         sa.Column("description", sa.Text()),
         sa.Column("created_at", sa.DateTime(timezone=True),
                   nullable=False, server_default=sa.func.now()),
-        sa.CheckConstraint("length(btrim(name)) > 0", name="tag_name_not_blank"),
+        sa.CheckConstraint("length(trim(name)) > 0", name="tag_name_not_blank"),
     )
 
     op.create_table(

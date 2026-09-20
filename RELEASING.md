@@ -91,7 +91,7 @@ release cannot be cut with an API that reports the wrong version.
 
    Warnings count as failures: `pytest` is configured with `filterwarnings = ["error", ...]`, with the handful of third-party deprecations we do not control listed explicitly. If a new warning appears, deal with it rather than adding it to that list out of habit.
 
-6. **Check the migrations.** If the release contains a new revision in `apps/api/migrations/versions/`:
+6. **Check the migrations.** If the release contains a new revision in `db/migrations/versions/`:
 
    - Confirm `REQUIRED_SCHEMA_REVISION` in `src/bookmarks_api/schema_guard.py` was bumped to match. `make test` fails if it was not.
    - Say in the release notes that a migration must be applied, and name the revision.
@@ -145,7 +145,7 @@ Use a short prefix on commit messages so history is easy to scan.
 - `docs: <summary>` for documentation and process changes that are not part of a release.
 - `test: <summary>` for test-only changes.
 - `build: <summary>` for build tooling, dependencies, and configuration.
-- `db: <summary>` for a migration in `apps/api/migrations/`, so schema changes are greppable in history.
+- `db: <summary>` for a migration in `db/migrations/`, so schema changes are greppable in history.
 
 Documentation or process changes (this file, README, the `doc/` tree) are committed on their own with a `docs:` message rather than being folded into a release commit.
 

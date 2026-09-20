@@ -4,15 +4,15 @@ This is the check that converts "500 on one endpoint at 2am" into "the process w
 start, and said why", so its failure messages are asserted, not just its return codes.
 """
 
-from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
 
 from bookmarks_api import schema_guard
+from bookmarks_api.config import MIGRATIONS_DIR
 from bookmarks_api.schema_guard import REQUIRED_SCHEMA_REVISION, SchemaMismatch, verify
 
-VERSIONS_DIR = Path(__file__).resolve().parent.parent / "migrations" / "versions"
+VERSIONS_DIR = MIGRATIONS_DIR / "versions"
 
 
 def test_required_revision_matches_alembic_head():

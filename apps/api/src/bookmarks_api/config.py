@@ -10,11 +10,16 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Absolute paths, not relative ones. `env_file=".env"` resolves against the *current
-# working directory*, so `alembic -c apps/api/alembic.ini` run from the repo root would
+# working directory*, so `alembic -c db/alembic.ini` run from the repo root would
 # find nothing and fall back to every default -- silently, because a missing .env is not
 # an error.
 APP_ROOT = Path(__file__).resolve().parents[2]  # apps/api
 REPO_ROOT = APP_ROOT.parents[1]  # the monorepo root
+
+# The alembic tree lives at the repo root, not under apps/api: the schema is the whole
+# project's, not this service's. Named here so that moving it again is one edit.
+ALEMBIC_INI = REPO_ROOT / "db" / "alembic.ini"
+MIGRATIONS_DIR = REPO_ROOT / "db" / "migrations"
 
 # Both are read, repo root first. A root .env holds what the whole project shares; an
 # apps/api one overrides it for this service. Real environment variables beat both.
