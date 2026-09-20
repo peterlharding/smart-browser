@@ -1,0 +1,60 @@
+[project]
+name = "bookmarks-api"
+version = "0.1.0"
+description = "Smart-Browser bookmarks API (v2)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "selectolax>=0.3.21",
+    "alembic>=1.13",
+    "tldextract>=5.3",   # top_domain_under_public_suffix; registered_domain deprecated
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    # starlette's TestClient deprecates httpx 0.x; httpx2 silences the warning.
+    "httpx2>=2.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bookmarks_api"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+# The default run excludes the Postgres suite, so `pytest` needs no infrastructure.
+# Opt in with:  TEST_DATABASE_URL=... pytest -m postgres
+addopts = "-m 'not postgres'"
+# The release checklist requires a run with no warnings, so warnings are errors and the
+# handful we do not control are listed explicitly. A new deprecation in our own code
+# fails the suite rather than scrolling past; a new one here is a deliberate decision.
+filterwarnings = [
+    "error",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:",
+]
+markers = [
+    "postgres: requires a real Postgres via TEST_DATABASE_URL",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
