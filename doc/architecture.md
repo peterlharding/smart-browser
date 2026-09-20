@@ -198,6 +198,28 @@ CREATE TABLE tag_centroid (
 );
 ```
 
+### Database platform
+
+The target schema assumes **PostgreSQL 12 or newer**, and M3 assumes pgvector 0.5+:
+
+| Feature | Needs | Used for |
+| --- | --- | --- |
+| `GENERATED ALWAYS AS ... STORED` | PG 12+ | `bookmark_content.tsv` |
+| `citext`, `pg_trgm` | any supported version | tag names, fuzzy tag search |
+| pgvector with `hnsw` | pgvector 0.5+ (PG 11+) | embedding search |
+
+The 2025-05-10 dump reports `Dumped from database version 17.4` and
+`docker/bookmarks-db/docker-compose.yml` pins `postgres:17`, so there is headroom. Confirm
+the deployment target separately with `SELECT version();` — the dump and the compose file are
+both dev-side evidence.
+
+Note that the *schema* is much older than the server. `schema/bin/dump_mysql.sh` and
+`db_converter.py` are still in the reference repo, and `models/bookmark.py` carries a
+`mysql> desc bookmark;` transcript in its docstring. The shape being replaced — `integer`
+ids with no default, `varchar(32)` tags, no foreign keys, no non-primary-key indexes — is a
+mechanical MySQL conversion that arrived without sequences and never gained anything
+Postgres-native. It is not a constraint the platform imposes.
+
 ### The invariant that matters
 
 `bookmark` rows are shared between users. **Every read path must join through `user_bookmark`

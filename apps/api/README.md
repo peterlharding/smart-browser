@@ -83,6 +83,14 @@ make -C ../.. migrate-status   # what the database is at vs what the code wants
 make -C ../.. migrate          # bring it to head
 ```
 
+Before the first migration, confirm the server and your privileges:
+
+```sql
+SELECT version();          -- target schema needs PG 12+; M3 needs pgvector 0.5+
+SELECT current_user, session_user;
+\dt                        -- the Owner column must be you, or you must be superuser
+```
+
 Run migrations as the **table owner** (`plh`) or a superuser: `CREATE SEQUENCE ... OWNED BY`
 and `ALTER TABLE ... SET DEFAULT` both require ownership, and an unprivileged role fails
 partway with the sequences created but not attached. Everything is `IF NOT EXISTS`, so

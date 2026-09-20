@@ -9,6 +9,11 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Documentation
+
+- Recorded the PostgreSQL version floor the target schema assumes (12+ for generated
+  columns, pgvector 0.5+ for M3), and a preflight check before the first migration.
+
 ## [0.1.0] - 2026-09-20
 
 First release. See [release_notes/v0.1.0.md](release_notes/v0.1.0.md) for details.
