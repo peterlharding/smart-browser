@@ -36,22 +36,9 @@
         "summary": "Save Bookmark",
         "description": "Save a page.\n\n201 the first time, 200 every time after, never a second row \u2014 whatever the spelling\nof the URL and however many clients call at once. Tags in the payload are merged on\nevery call, so re-saving with new tags adds them rather than failing.",
         "operationId": "save_bookmark_api_v2_bookmarks_post",
-        "parameters": [
+        "security": [
           {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
+            "API token": []
           }
         ],
         "requestBody": {
@@ -94,6 +81,11 @@
         "summary": "List Bookmarks",
         "description": "List your saves.\n\n`mode=all` is the intersection the tag sidebar is built on \u2014 `python` AND `fastapi`.\n`untagged=true` is how you work the backlog.",
         "operationId": "list_bookmarks_api_v2_bookmarks_get",
+        "security": [
+          {
+            "API token": []
+          }
+        ],
         "parameters": [
           {
             "name": "tags",
@@ -195,22 +187,6 @@
               "default": 0,
               "title": "Offset"
             }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
@@ -245,6 +221,11 @@
         "summary": "Lookup Bookmark",
         "description": "Have I saved this page, and with what tags?\n\nA read. `POST /bookmarks` is idempotent and would answer the same question, but it is\na write: a client calling it merely to ask would create a bookmark every time someone\nopened a popup. 404 means not saved, which is a normal answer here.",
         "operationId": "lookup_bookmark_api_v2_bookmarks_lookup_get",
+        "security": [
+          {
+            "API token": []
+          }
+        ],
         "parameters": [
           {
             "name": "url",
@@ -254,22 +235,6 @@
               "type": "string",
               "minLength": 1,
               "title": "Url"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -304,6 +269,11 @@
         ],
         "summary": "Get Bookmark",
         "operationId": "get_bookmark_api_v2_bookmarks__save_id__get",
+        "security": [
+          {
+            "API token": []
+          }
+        ],
         "parameters": [
           {
             "name": "save_id",
@@ -312,22 +282,6 @@
             "schema": {
               "type": "integer",
               "title": "Save Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -360,6 +314,11 @@
         ],
         "summary": "Patch Bookmark",
         "operationId": "patch_bookmark_api_v2_bookmarks__save_id__patch",
+        "security": [
+          {
+            "API token": []
+          }
+        ],
         "parameters": [
           {
             "name": "save_id",
@@ -368,22 +327,6 @@
             "schema": {
               "type": "integer",
               "title": "Save Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -427,6 +370,11 @@
         "summary": "Delete Bookmark",
         "description": "Unsave a page.\n\nA soft delete of *your* save. The `bookmark` row and anything crawled for it survive,\nbecause they belong to everyone; and re-saving the page restores this row rather than\ncreating a second one.",
         "operationId": "delete_bookmark_api_v2_bookmarks__save_id__delete",
+        "security": [
+          {
+            "API token": []
+          }
+        ],
         "parameters": [
           {
             "name": "save_id",
@@ -435,22 +383,6 @@
             "schema": {
               "type": "integer",
               "title": "Save Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -478,6 +410,11 @@
         ],
         "summary": "Add Tags",
         "operationId": "add_tags_api_v2_bookmarks__save_id__tags_post",
+        "security": [
+          {
+            "API token": []
+          }
+        ],
         "parameters": [
           {
             "name": "save_id",
@@ -486,22 +423,6 @@
             "schema": {
               "type": "integer",
               "title": "Save Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -546,6 +467,11 @@
         ],
         "summary": "Remove Tag",
         "operationId": "remove_tag_api_v2_bookmarks__save_id__tags__tag_name__delete",
+        "security": [
+          {
+            "API token": []
+          }
+        ],
         "parameters": [
           {
             "name": "save_id",
@@ -563,22 +489,6 @@
             "schema": {
               "type": "string",
               "title": "Tag Name"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -614,6 +524,11 @@
         "summary": "List Tags",
         "description": "Your tags, with how often you have used them.\n\nThe vocabulary is global (ADR 0002) but the counts are yours: what belongs in an\nautocomplete list is how often *you* reach for a tag. Ranking by usage rather than\nalphabetically is what makes a 567-entry vocabulary usable at all.",
         "operationId": "list_tags_api_v2_tags_get",
+        "security": [
+          {
+            "API token": []
+          }
+        ],
         "parameters": [
           {
             "name": "q",
@@ -654,22 +569,6 @@
               "minimum": 1,
               "default": 500,
               "title": "Limit"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -1057,6 +956,13 @@
           "type"
         ],
         "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "API token": {
+        "type": "http",
+        "description": "The token half of an API_TOKENS entry: for `plh:s3cret`, enter `s3cret`.",
+        "scheme": "bearer"
       }
     }
   }

@@ -29,6 +29,40 @@ def test_write_with_non_bearer_scheme_is_rejected(client):
     assert r.status_code == status.HTTP_401_UNAUTHORIZED
 
 
+def test_a_colon_after_bearer_is_rejected(client, auth):
+    """`Bearer: <token>` is not the header, however reasonable it looks.
+
+    It is what you write when the docs page gives you a bare header field instead of an
+    Authorize dialog -- which is why auth is declared as a security scheme, and why this
+    asserts the rejection is a clean 401 rather than something confusing.
+    """
+    token = auth["Authorization"].split(" ", 1)[1]
+    r = client.post(
+        "/api/v2/bookmarks", json=PAYLOAD, headers={"Authorization": f"Bearer: {token}"}
+    )
+    assert r.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_the_docs_page_offers_an_authorize_dialog(client):
+    """Every protected operation must carry the declared scheme.
+
+    Swagger UI draws the padlock and the Authorize dialog from `security` in the schema,
+    and FastAPI only emits that for a dependency deriving from SecurityBase. Read the
+    Authorization header by hand instead and the docs page silently loses its auth UI --
+    no test fails, the API just becomes unusable from the one place people try it first.
+    """
+    schema = client.app.openapi()
+    assert schema["components"]["securitySchemes"], "no security scheme declared"
+
+    unprotected = [
+        f"{method.upper()} {path}"
+        for path, operations in schema["paths"].items()
+        for method, operation in operations.items()
+        if not operation.get("security") and not path.endswith("/health")
+    ]
+    assert not unprotected, f"operations with no declared auth: {unprotected}"
+
+
 def test_unconfigured_deployment_refuses_writes_rather_than_allowing_them(anon_client, auth):
     """With no API_TOKENS set, writes must fail closed.
 

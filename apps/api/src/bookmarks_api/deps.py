@@ -5,7 +5,8 @@ from __future__ import annotations
 import secrets
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,9 +18,22 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbDep = Annotated[Session, Depends(get_db)]
 
 
+# A declared security scheme rather than a raw Authorization header. The behaviour is the
+# same either way; what it buys is the padlock and the Authorize dialog in /api/v2/docs,
+# which FastAPI only renders for a dependency deriving from SecurityBase. Reading the
+# header by hand means everyone testing the API hand-types "Bearer <token>" into a header
+# field -- and gets a 401 for writing "Bearer: <token>", which is the same mistake the
+# dialog makes impossible. auto_error=False so the responses below stay ours.
+bearer_scheme = HTTPBearer(
+    auto_error=False,
+    scheme_name="API token",
+    description="The token half of an API_TOKENS entry: for `plh:s3cret`, enter `s3cret`.",
+)
+
+
 def require_token(
     settings: SettingsDep,
-    authorization: Annotated[str | None, Header()] = None,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)] = None,
 ) -> str:
     """Bearer-token auth for writes.
 
@@ -34,11 +48,13 @@ def require_token(
             detail="No API tokens configured; writes are disabled.",
         )
 
-    scheme, _, credential = (authorization or "").partition(" ")
-    if scheme.lower() != "bearer" or not credential:
+    # HTTPBearer has already rejected anything that is not `Authorization: Bearer <x>` --
+    # including the `Bearer: <x>` that a header field invites -- by returning None.
+    credential = credentials.credentials if credentials else ""
+    if not credential:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
-            detail="Bearer token required.",
+            detail="Bearer token required, as `Authorization: Bearer <token>`.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
