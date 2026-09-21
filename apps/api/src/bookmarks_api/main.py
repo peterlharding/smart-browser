@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import API_CONTRACT_VERSION, __version__
 from .config import get_settings
@@ -39,6 +40,22 @@ app = FastAPI(
     docs_url="/api/v2/docs",
     openapi_url="/api/v2/openapi.json",
     lifespan=lifespan,
+)
+
+# Browser clients -- the extension now, the Electron shell in M5 -- read responses from a
+# different origin than the API's. Without this the request still reaches the server and
+# the browser throws the answer away, which surfaces as a network error in the client and
+# a perfectly ordinary 200 in the API log: a mismatch that costs an afternoon.
+#
+# No `allow_credentials`: auth is a bearer token in a header, so nothing here should ever
+# ride on a cookie, and combining credentials with a permissive origin rule is how a CORS
+# policy becomes a vulnerability.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_origin_list,
+    allow_origin_regex=get_settings().cors_origin_regex,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(health.router, prefix="/api/v2")

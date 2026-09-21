@@ -49,7 +49,16 @@ export class BookmarksApi {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (cause) {
-      throw new ApiError(`Cannot reach ${this.baseUrl}`, { detail: String(cause) });
+      // Carry the browser's own words. Every network failure arrives here as an opaque
+      // TypeError, and which one it is decides what to do: a refused connection means
+      // the API is down, "access to the ... address space" means Chrome's local network
+      // access restriction is blocking the extension, and a CORS message means the
+      // server answered but would not let this origin read it. A bare "Cannot reach"
+      // sends you looking at the wrong one.
+      const because = cause instanceof Error ? cause.message : String(cause);
+      throw new ApiError(`Cannot reach ${this.baseUrl} -- ${because}`, {
+        detail: String(cause),
+      });
     }
 
     if (response.status === 204) return null;

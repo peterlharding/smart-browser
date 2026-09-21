@@ -66,6 +66,16 @@ class Settings(BaseSettings):
     # requires. Turning it off is a deliberate act, not a default.
     schema_check: bool = True
 
+    # Origins allowed to call the API from a browser, comma-separated. Extension pages
+    # are matched by pattern instead (see cors_origin_regex) because an extension's
+    # origin is its id, which differs between an unpacked load and a published one.
+    cors_origins: str = ""
+
+    # chrome-extension://<32 letters a-p>. Matching the shape rather than listing ids
+    # keeps an unpacked reload -- which gets a new id -- from silently breaking the
+    # extension, without opening the API to the web.
+    cors_origin_regex: str = r"^(chrome|moz)-extension://[a-z0-9-]+$"
+
     # Embeddings (M2)
     embedding_backend: str = "local"
     embedding_model: str = "bge-small-en-v1.5"
@@ -122,6 +132,10 @@ class Settings(BaseSettings):
     @property
     def token_set(self) -> frozenset[str]:
         return frozenset(self.token_map)
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache
