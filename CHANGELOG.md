@@ -9,6 +9,27 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Added
+
+- **The embedding pass** ([ADR 0013](doc/decisions/0013-embeddings.md)). `make embed`
+  turns each crawled page's title, description and text into a 384-dimension vector with
+  `bge-small-en-v1.5`, run through `fastembed`. Measured against `sentence-transformers`,
+  it gave identical vectors at a fifth of the install size and a thirtieth of the load
+  time. It runs as its own process, apart from the crawl worker; there is no queue table,
+  because a page needs embedding whenever `bookmark_content.model` is not the current
+  model and recipe, so changing either re-embeds everything with no migration. Batches of
+  32 claimed with `SKIP LOCKED`, and the model's dimension checked against the column
+  before anything is written. `make crawl-status` reports how many pages are embedded.
+- **`make test-model`** runs the real model, which the default suite never downloads; CI
+  runs it with the model cached.
+
+### Removed
+
+- The `EMBEDDING_BACKEND`, `EMBEDDING_DIM` and `OLLAMA_BASE_URL` settings, which nothing
+  read. The dimension is the column's, fixed by `vector(384)` and checked by `make
+  embed`. `EMBEDDING_MODEL` now names the model as `fastembed` does,
+  `BAAI/bge-small-en-v1.5`, and `EMBEDDING_CACHE_DIR` says where it is downloaded.
+
 ### Documentation
 
 - **`RELEASING.md` tags only after CI passes.** The steps had tagged and pushed the commit

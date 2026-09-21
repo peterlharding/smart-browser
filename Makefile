@@ -47,7 +47,7 @@ help:  ## Show this help
         api-lint api-openapi openapi-check test test-api test-scripts test-ext test-pg \
         migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
         db-connect db-doctor db-bootstrap schema-drop rehash-urls \
-        worker crawl-backfill crawl-status
+        worker embed crawl-backfill crawl-status test-model
 
 
 # --- the release gate -------------------------------------------------------
@@ -86,6 +86,9 @@ test-api:  ## API suite (SQLite, no infrastructure)
 
 test-scripts:  ## Tests for the release tooling
 	$(UV) run pytest scripts/tests -q
+
+test-model:  ## The real embedding model: downloads it once (64 MB) into EMBEDDING_CACHE_DIR
+	cd apps/api && uv run pytest -m model -q
 
 test-ext:  ## Extension suite (node --test, no dependencies)
 	node --test apps/extension/test/*.test.js
@@ -141,6 +144,9 @@ openapi-check:  ## Fail if the committed OpenAPI contract differs from what the 
 
 worker:  ## Run the crawl worker until stopped: [ONCE=yes] to drain what is due and exit
 	cd apps/api && uv run python -m bookmarks_api.worker $(if $(filter yes,$(ONCE)),--once)
+
+embed:  ## Run the embedding pass until stopped: [ONCE=yes] to embed what is waiting and exit
+	cd apps/api && uv run python -m bookmarks_api.embedder $(if $(filter yes,$(ONCE)),--once)
 
 crawl-backfill:  ## Queue every bookmark that has never been fetched
 	cd apps/api && uv run python -m bookmarks_api.worker backfill

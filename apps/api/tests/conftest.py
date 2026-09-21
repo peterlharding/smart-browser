@@ -163,3 +163,38 @@ def migrated(pg_url):
         with engine.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         engine.dispose()
+
+
+# --- embeddings: a model that needs no download (ADR 0013) -----------------------
+
+
+class FakeModel:
+    """Deterministic bag-of-words vectors, unit length, `dim` wide.
+
+    Texts sharing words get similar vectors, so a nearest-neighbour query over its output
+    means something, without downloading the real model. It records what it was asked to
+    embed, and can be told to fail.
+    """
+
+    def __init__(self, name: str = "fake/model", dim: int = 384, fail: bool = False) -> None:
+        self.name = name
+        self.dim = dim
+        self.fail = fail
+        self.calls: list[list[str]] = []
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        import hashlib
+        import math
+
+        self.calls.append(list(texts))
+        if self.fail:
+            raise RuntimeError("model exploded")
+        vectors = []
+        for text_ in texts:
+            vector = [0.0] * self.dim
+            for word in text_.lower().split():
+                digest = hashlib.sha256(word.strip(".,:;!?").encode()).digest()
+                vector[int.from_bytes(digest[:4], "big") % self.dim] += 1.0
+            norm = math.sqrt(sum(x * x for x in vector)) or 1.0
+            vectors.append([x / norm for x in vector])
+        return vectors

@@ -247,7 +247,7 @@ def backfill(session: Session) -> int:
     return len(queued)
 
 
-def status(session: Session, failures: int = 10) -> str:
+def status(session: Session, failures: int = 10, embedding_label: str | None = None) -> str:
     counts: dict[JobState, int] = {
         state: count
         for state, count in session.execute(
@@ -255,6 +255,10 @@ def status(session: Session, failures: int = 10) -> str:
         ).tuples()
     }
     lines = ["  ".join(f"{state.value} {counts.get(state, 0)}" for state in JobState)]
+    if embedding_label is not None:
+        from .embedder import status_line
+
+        lines.append(status_line(session, embedding_label))
     recent = session.execute(
         select(CrawlJob.bookmark_id, CrawlJob.state, CrawlJob.attempts, CrawlJob.last_error,
                Bookmark.url)
@@ -293,8 +297,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"queued {backfill(session)}")
         return 0
     if args.command == "status":
+        from .embedder import label
+
         with factory() as session:
-            print(status(session))
+            print(status(session, embedding_label=label(settings.embedding_model)))
         return 0
 
     stop = threading.Event()

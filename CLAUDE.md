@@ -36,6 +36,8 @@ make db-bootstrap   # CREATE EXTENSION vector, as a superuser; once per database
 make db-doctor      # which database, as whom, which revision, which tables
 make rehash-urls    # after any urlnorm.py change; CONFIRM=yes to apply
 make worker         # the crawl worker; ONCE=yes drains what is due and exits
+make embed          # the embedding pass; ONCE=yes embeds what is waiting and exits
+make test-model     # the real embedding model; downloads 64 MB once
 make crawl-status   # jobs by state, latest errors
 make schema-drop CONFIRM=yes
 ```
@@ -120,13 +122,14 @@ say so — that is where most of this project's real defects have lived.
 
 ## Current state
 
-M0 is done and proven end-to-end. M3 is in progress: revision `0002` added
-`bookmark_content` and `crawl_job`, the save path enqueues inside its own transaction
-(ADR 0009), and the crawl worker drains it (ADR 0012): `make worker`, `make
-crawl-backfill`, `make crawl-status`. `fetch.py` is the only module that touches the
-network and the worker takes it as a parameter; `extract.py` is `trafilatura`. **Next:
-embeddings**, as a second pass over `bookmark_content WHERE embedding IS NULL`, so the
-model loads in one process and never in the fetch loop.
+M0 and M3 are done. Revision `0002` added `bookmark_content` and `crawl_job`, the save
+path enqueues inside its own transaction (ADR 0009), the crawl worker drains it (ADR 0012:
+`make worker`, `make crawl-backfill`, `make crawl-status`), and a separate embedding pass
+turns its text into vectors (ADR 0013: `make embed`). `fetch.py` is the only module that
+touches the network and `embedder.FastembedModel` the only one that loads the model; both
+are parameters, so tests use fakes. The real model is `make test-model`, opt-in and run in
+CI. **Next: M4**, blocked on the open questions in `doc/plan.md` (which LLM, tag
+hierarchy).
 
 Titles (ADR 0010, revision `0003`): `title_override` is what you typed (PATCH only),
 `user_bookmark.saved_title` is what the client saw (POST), `bookmark.title` is what the

@@ -73,7 +73,8 @@ Both are gitignored. They hold a password — keep it that way.
 | `SINGLE_USER_ID` | The user a bare token acts as |
 | `SCHEMA_CHECK` | `false` bypasses the startup revision check. Not a default |
 | `CRAWL_ALLOW_PRIVATE` | `true` lets the crawl worker fetch loopback and private-network addresses. Default `false` (ADR 0012) |
-| `EMBEDDING_*` | M3; the dimension is a config value so it can be benchmarked |
+| `EMBEDDING_MODEL` | The model `make embed` runs, as `fastembed` names it. Default `BAAI/bge-small-en-v1.5` (ADR 0013) |
+| `EMBEDDING_CACHE_DIR` | Where the model is downloaded, once. Default `~/.cache/smart-browser/models` |
 
 `API_TOKENS` takes `name:token` pairs, so more than one client can act as more than one
 user before OAuth lands:
@@ -309,6 +310,7 @@ src/bookmarks_api/
 ├── worker.py        the crawl worker: claim, fetch, record (ADR 0012): make worker
 ├── fetch.py         the only network access; limits, redirects, private addresses
 ├── extract.py       title, description and main text, via trafilatura
+├── embedder.py      the embedding pass (ADR 0013): make embed
 └── routers/
 ```
 
@@ -323,9 +325,9 @@ Deliberate, and tracked in `doc/plan.md`:
 - **No sign-in.** A static API token maps to an `app_user` row created on first use. M1
   replaces that with OAuth through `user_identity`; every handler already takes an
   `AppUser`, so only `deps.py` changes.
-- **No embeddings, no AI tags yet.** The crawl worker fills `bookmark_content.text`; the
-  embedding pass over it is the next part of M3. PDFs and other non-HTML pages are
-  recorded as fetched but not extracted (ADR 0012).
+- **No AI tags and no search yet.** The crawl worker fills `bookmark_content.text` and
+  `make embed` its vectors, but nothing in the API reads them until M4 and M6. PDFs and
+  other non-HTML pages are recorded as fetched but not extracted (ADR 0012).
 - **No data.** Nothing imports the predecessor's bookmarks (ADR 0007).
 - **`source` on tag links is stored but nothing sets it to `ai` yet.** The column exists so
   M4 needs no migration, and so the UI can distinguish suggestions from choices.

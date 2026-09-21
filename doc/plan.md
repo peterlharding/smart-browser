@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | **M0** | Monorepo, API v2, clean schema, extension with tag-on-save, release process, CI | Tagging at the moment of saving is the product; everything else supports it | **done** |
 | **M1** | Identity: OAuth for Google and GitHub, token issue and rotation | API tokens are a stand-in; real sign-in replaces them | deferred — see below |
-| **M3** | Crawler: titles, text, embeddings. `bookmark_content`, pgvector | Nothing downstream works without extracted content | **next** |
+| **M3** | Crawler: titles, text, embeddings. `bookmark_content`, pgvector | Nothing downstream works without extracted content | **done** |
 | **M4** | AI categorization: suggestions on save, backfill, review queue for proposals | Tagging stops depending on you thinking of the tag | not started |
 | **M5** | Electron shell: tabs, omnibox, OAuth sign-in, save sheet | First point a browser beats Chrome plus the extension | not started |
 | **M6** | Tag sidebar, multi-tag intersection, hybrid search | The thing you actually wanted | not started |
@@ -89,7 +89,7 @@ bulk-imports; see ADR 0007.
 
 ---
 
-## M3 — next
+## M3 — done
 
 **Decided:** a queue in Postgres, drained by a worker
 ([ADR 0009](decisions/0009-crawl-queue-in-postgres.md)); the options and what each costs
@@ -107,7 +107,13 @@ worker`, with `make crawl-backfill` for saves made before the queue and `make
 crawl-status` to see it working. Its first real run found the one real save behind HTTP
 Basic auth: `failed`, 401 recorded, and the save still titled by what the browser saw.
 
-Next: embeddings, as a second pass over `bookmark_content WHERE embedding IS NULL`.
+The embedding pass turns that text into vectors ([ADR
+0013](decisions/0013-embeddings.md)): `make embed`, a separate process running
+`bge-small-en-v1.5` through `fastembed`, re-embedding whatever `bookmark_content.model`
+says was written by another model or recipe. End to end on a scratch database, two
+articles about Postgres scored 0.75 against each other and 0.46 against a bread recipe.
+
+Next is M4, which the open questions below still block.
 
 **Unblocked — 2026-09-21.** pgvector 0.8.5 is available in the running container, so no
 container swap. It is not a trusted extension, so installing it needs `postgres`, not
@@ -169,5 +175,6 @@ ADR 0002 chose a global vocabulary. Adding a per-user private namespace later is
 | 2026-09-21 | Title seen at save is per save, apart from the title you chose; you, then seen, then crawled | [ADR 0010](decisions/0010-title-seen-at-save.md) |
 | 2026-09-21 | URL normalisation merges only spellings of the same resource; http and https only | [ADR 0011](decisions/0011-conservative-url-normalisation.md) |
 | 2026-09-21 | Crawl worker: one page at a time, 10-minute lease, trafilatura, private addresses refused, robots.txt not consulted | [ADR 0012](decisions/0012-crawl-worker.md) |
+| 2026-09-21 | Embeddings through fastembed, one vector per page from its opening 512 tokens, in its own process | [ADR 0013](decisions/0013-embeddings.md) |
 | 2026-09-21 | First end-to-end save: extension → API → Postgres, verified in Swagger | this plan, M0 |
 | 2026-09-20 | Schema on Alembic revisions; contract version separate from release version; compatibility enforced by checks, not numbers | [ADR 0005](decisions/0005-versioning-and-compatibility.md) |

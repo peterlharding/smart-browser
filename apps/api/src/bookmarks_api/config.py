@@ -82,11 +82,11 @@ class Settings(BaseSettings):
     # the machine. True for a deployment that wants its intranet pages crawled (ADR 0012).
     crawl_allow_private: bool = False
 
-    # Embeddings (M2)
-    embedding_backend: str = "local"
-    embedding_model: str = "bge-small-en-v1.5"
-    embedding_dim: int = 384
-    ollama_base_url: str = "http://127.0.0.1:11434"
+    # Embeddings (ADR 0013). The model as fastembed names it; its dimension must match the
+    # vector(384) column, which the embedder checks before writing. Downloaded once, 64 MB,
+    # into the cache directory.
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_cache_dir: str = "~/.cache/smart-browser/models"
 
     @property
     def database_url(self) -> str:

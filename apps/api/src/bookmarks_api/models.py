@@ -12,6 +12,7 @@ system, and this is what keeps that cost per-URL instead of per-user-per-URL.
 from __future__ import annotations
 
 import enum
+import json
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
@@ -27,6 +28,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
     func,
     text,
@@ -35,11 +37,31 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
 
-# The embedding column, and its stand-in on SQLite. The default suite has no pgvector and
-# does not need one: nothing in the API reads an embedding yet, and when search arrives it
-# will be Postgres-only anyway. Text keeps the table creatable so every other column is
-# still exercised on SQLite.
-Embedding = Vector(384).with_variant(Text(), "sqlite")
+# The dimension of `bookmark_content.embedding`, fixed by `vector(384)` in the SQL. Not a
+# setting: changing it is a migration. The embedder checks its model against the column
+# itself before writing (ADR 0013).
+EMBEDDING_DIM = 384
+
+
+class _VectorAsJSON(TypeDecorator[list[float]]):
+    """The embedding column's stand-in on SQLite, which has no pgvector.
+
+    JSON text rather than bare Text, so the default suite stores and reads back real
+    vectors: the embedder's paths are tested there, and only the index and the distance
+    operators need Postgres.
+    """
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return None if value is None else json.dumps([float(x) for x in value])
+
+    def process_result_value(self, value, dialect):
+        return None if value is None else json.loads(value)
+
+
+Embedding = Vector(EMBEDDING_DIM).with_variant(_VectorAsJSON(), "sqlite")
 
 
 class TagSource(enum.Enum):

@@ -17,6 +17,7 @@ dependencies = [
     "tldextract>=5.3",   # top_domain_under_public_suffix; registered_domain deprecated
     "pgvector>=0.5.0",
     "trafilatura>=2.0",
+    "fastembed>=0.7",
 ]
 
 # PEP 735 dependency group rather than an optional extra: these are development tools,
@@ -42,9 +43,10 @@ packages = ["src/bookmarks_api"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-# The default run excludes the Postgres suite, so `pytest` needs no infrastructure.
-# Opt in with:  TEST_DATABASE_URL=... pytest -m postgres
-addopts = "-m 'not postgres'"
+# The default run excludes the Postgres suite and the real embedding model, so `pytest`
+# needs no infrastructure and no download.
+# Opt in with:  TEST_DATABASE_URL=... pytest -m postgres     or     pytest -m model
+addopts = "-m 'not postgres and not model'"
 # The release checklist requires a run with no warnings, so warnings are errors and the
 # handful we do not control are listed explicitly. A new deprecation in our own code
 # fails the suite rather than scrolling past; a new one here is a deliberate decision.
@@ -59,6 +61,7 @@ filterwarnings = [
 ]
 markers = [
     "postgres: requires a real Postgres via TEST_DATABASE_URL",
+    "model: runs the real embedding model, downloading it once (64 MB) into EMBEDDING_CACHE_DIR",
 ]
 
 [tool.ruff]

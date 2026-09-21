@@ -252,9 +252,12 @@ one rule worth its own test rather than a code review.
   see audit finding 6.
 - **Soft delete** on `user_bookmark`, not on `bookmark`. Unsaving a page removes your save;
   the URL record and its embedding survive for everyone else.
-- **`vector(384)`** matches `bge-small-en-v1.5` running locally. The dimension is a config
-  value (`EMBEDDING_DIM`) so M2 can benchmark against the 1,817 hand-tagged bookmarks before
-  committing; `bookmark_content.model` records what wrote each row so a re-embed is detectable.
+- **`vector(384)`** matches `bge-small-en-v1.5`, run locally through `fastembed`
+  (ADR 0013). The dimension is the column's, not a setting: the embedder checks its model
+  against the column before writing, and a different width is a migration.
+  `bookmark_content.model` records the model and the input recipe that wrote each row, so
+  switching either, after the M4 benchmark against the 1,817 hand-tagged bookmarks, say,
+  is a re-run rather than a migration.
 - **`parent_id`** is present but unused pending the tag-hierarchy question in `plan.md`.
 
 ---
