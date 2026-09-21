@@ -36,7 +36,31 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "apps/extension/src/manifest.json").write_text(
         json.dumps({"manifest_version": 3, "version": "0.1.0"})
     )
+    (tmp_path / "package-lock.json").write_text(json.dumps(LOCKFILE, indent=2))
     return tmp_path
+
+
+# Shaped as npm writes it: the root's version at the top and in its "" entry, and each
+# workspace's in its own entry, with dependencies' versions around them to be left alone.
+LOCKFILE = {
+    "name": "x",
+    "version": "0.1.0",
+    "lockfileVersion": 3,
+    "packages": {
+        "": {"name": "x", "version": "0.1.0", "workspaces": ["apps/browser", "apps/extension"]},
+        "apps/browser": {"name": "@x/browser", "version": "0.1.0", "devDependencies": {}},
+        "apps/extension": {"name": "@x/extension", "version": "0.1.0"},
+        "node_modules/esbuild": {"version": "0.28.2"},
+    },
+}
+
+
+def lock_versions(repo: Path) -> dict[str, str]:
+    lock = json.loads((repo / "package-lock.json").read_text())
+    return {
+        "top": lock["version"],
+        **{name or "root": entry["version"] for name, entry in lock["packages"].items()},
+    }
 
 
 def run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -136,3 +160,27 @@ def test_set_only_touches_the_version_field(repo):
     run(repo, "set", "2.0.0")
     after = (repo / "apps/api/pyproject.toml").read_text()
     assert before.replace('version = "0.1.0"', 'version = "2.0.0"') == after
+
+
+def test_set_updates_the_lockfile_for_the_root_and_every_workspace(repo):
+    run(repo, "set", "0.4.0")
+    assert lock_versions(repo) == {
+        "top": "0.4.0",
+        "root": "0.4.0",
+        "apps/browser": "0.4.0",
+        "apps/extension": "0.4.0",
+        "node_modules/esbuild": "0.28.2",  # a dependency's version is not ours to change
+    }
+
+
+def test_a_workspace_left_behind_in_the_lockfile_is_drift(repo):
+    """`npm version` updates only the root's entries, which is how 0.4.0 found this."""
+    run(repo, "set", "0.4.0")
+    lock = json.loads((repo / "package-lock.json").read_text())
+    lock["packages"]["apps/browser"]["version"] = "0.1.0"
+    (repo / "package-lock.json").write_text(json.dumps(lock, indent=2))
+
+    result = run(repo, "check")
+    assert result.returncode == 1
+    assert "package-lock.json: 0.1.0  (expected 0.4.0)" in result.stderr
+

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Keep one version number across a polyglot monorepo.
 
-The version lives in three files that have no reason to agree with each other:
+The version lives in several files that have no reason to agree with each other:
 
     package.json                                 "version": "..."
     apps/api/pyproject.toml                      version = "..."
     apps/api/src/bookmarks_api/__init__.py       __version__ = "..."
+    apps/extension, apps/browser                 their package.json, and the manifest
+    package-lock.json                            the root's and each workspace's entry
 
 `package.json` is canonical because that is what `npm version` writes. This script makes
 the others follow, and `check` fails the build when they drift -- which is the only thing
@@ -46,8 +48,9 @@ class Site:
     """One place a version string lives."""
 
     path: Path
+    # Group 1 is the version. Only that span is rewritten, so a pattern can say which of
+    # several "version" fields it means by matching what surrounds it.
     pattern: re.Pattern[str]
-    template: str
     # Applied before writing, and before comparing on `check`.
     transform: Callable[[str], str] = lambda v: v
 
@@ -64,12 +67,10 @@ class Site:
         if not self.path.exists():
             return False
         text = self.path.read_text()
-        value = self.transform(version)
-        updated, count = self.pattern.subn(
-            lambda _: self.template.format(version=value), text, count=1
-        )
-        if count == 0:
+        match = self.pattern.search(text)
+        if match is None:
             raise SystemExit(f"no version field found in {self.rel}")
+        updated = text[: match.start(1)] + self.transform(version) + text[match.end(1) :]
         if updated != text:
             self.path.write_text(updated)
             return True
@@ -80,40 +81,43 @@ class Site:
         return str(self.path.relative_to(ROOT))
 
 
-CANONICAL = Site(
-    ROOT / "package.json",
-    re.compile(r'"version":\s*"([^"]+)"'),
-    '"version": "{version}"',
-)
+CANONICAL = Site(ROOT / "package.json", re.compile(r'"version":\s*"([^"]+)"'))
 
 FOLLOWERS = [
     Site(
         ROOT / "apps/api/pyproject.toml",
         re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE),
-        'version = "{version}"',
     ),
     Site(
         ROOT / "apps/api/src/bookmarks_api/__init__.py",
         re.compile(r'^__version__\s*=\s*"([^"]+)"', re.MULTILINE),
-        '__version__ = "{version}"',
     ),
     Site(
         ROOT / "apps/extension/package.json",
         re.compile(r'"version":\s*"([^"]+)"'),
-        '"version": "{version}"',
     ),
     # The manifest is what Chrome reads, and it will not accept a prerelease suffix.
     Site(
         ROOT / "apps/extension/src/manifest.json",
         re.compile(r'"version":\s*"([^"]+)"'),
-        '"version": "{version}"',
         transform=numeric_only,
     ),
-    # apps/browser/package.json joins this list at M5.
     Site(
         ROOT / "apps/browser/package.json",
         re.compile(r'"version":\s*"([^"]+)"'),
-        '"version": "{version}"',
+    ),
+    # package-lock.json records the root's version twice and each workspace's once, and
+    # `npm version` updates only the root's: a lockfile left behind makes `npm ci` install
+    # from a file that disagrees with the packages it describes.
+    Site(ROOT / "package-lock.json", re.compile(r'^  "version":\s*"([^"]+)"', re.MULTILINE)),
+    *(
+        Site(
+            ROOT / "package-lock.json",
+            re.compile(
+                rf'"{re.escape(entry)}":\s*\{{\s*"name":\s*"[^"]*",\s*"version":\s*"([^"]+)"'
+            ),
+        )
+        for entry in ("", "apps/browser", "apps/extension")
     ),
 ]
 

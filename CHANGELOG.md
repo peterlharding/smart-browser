@@ -30,6 +30,12 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **A version bump left `package-lock.json`'s workspaces behind.** `npm version` moves
+  the root's entries in the lockfile but not `apps/browser`'s or `apps/extension`'s, so
+  cutting 0.4.0 would have committed a lockfile describing 0.3.0 packages.
+  `scripts/version.py` now keeps all four entries in step and `make version-check` reports
+  any left behind. Its sites rewrite only the version they match, so a pattern can name
+  the entry it means.
 - **Tag names were not checked, and aliases resolved only when saving**
   ([ADR 0014](doc/decisions/0014-tag-names.md)). Each of these was reproduced against a
   running API first.

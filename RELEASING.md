@@ -36,7 +36,8 @@ reason to agree with each other:
 - `version` in `package.json` — **canonical**, because that is what `npm version` writes.
 - `version` in `apps/api/pyproject.toml`.
 - `__version__` in `apps/api/src/bookmarks_api/__init__.py` — what `/api/v1/health` reports.
-- `version` in `apps/browser/package.json` (from M5).
+- `version` in `apps/browser/package.json`.
+- `package-lock.json`, whose root and workspace entries each record a version.
 - `CHANGELOG.md` at the repo root, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `release_notes/v<version>.md`, one user-facing file per release.
 - The git tag `v<version>` (annotated).
@@ -56,7 +57,7 @@ release cannot be cut with an API that reports the wrong version.
    git diff   # expect only version fields to change
    ```
 
-   That wraps `npm version <version> --no-git-tag-version` and `scripts/version.py set`, then relocks `apps/api/uv.lock` and regenerates `packages/shared-types/openapi.json`, both of which record the version.
+   That wraps `npm version <version> --no-git-tag-version` and `scripts/version.py set`, which also moves every entry in `package-lock.json`, then relocks `apps/api/uv.lock` and regenerates `packages/shared-types/openapi.json`, both of which record the version.
    Expect their version lines in the diff too; `make check` fails if either is left behind.
 
 3. **Cut the changelog.** In `CHANGELOG.md`:
