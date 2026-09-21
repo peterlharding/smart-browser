@@ -176,6 +176,8 @@ def test_downgrade_removes_everything(pg_url):
 
 # --- the two sources of truth must agree ------------------------------------
 
+MIRROR_SCHEMA = "models_mirror"
+
 
 def test_sql_files_and_models_describe_the_same_schema(pg_url, migrated):
     """The schema is now stated twice: in db/schema/create/*.sql and in models.py.
@@ -188,32 +190,71 @@ def test_sql_files_and_models_describe_the_same_schema(pg_url, migrated):
     `visit_count` and `source` had Python-side defaults in the models and server defaults
     in the SQL. A Python default only applies when the ORM does the insert, so raw SQL and
     `INSERT ... ON CONFLICT` would have written NULL into NOT NULL columns.
-    """
-    from sqlalchemy import create_engine, inspect
 
+    The models are built into a second *schema* of the same database rather than a second
+    database. `CREATE DATABASE` needs the CREATEDB privilege, which an application role
+    has no business holding -- the first run of this suite against a realistic `api` role
+    failed on exactly that. `CREATE SCHEMA` needs only rights the database owner has.
+    """
     from bookmarks_api.db import Base
 
-    session, migrated_engine = migrated
+    _, migrated_engine = migrated
 
-    mirror_url = pg_url.rsplit("/", 1)[0] + "/page_history_models_mirror"
-    admin = create_engine(pg_url.replace("+psycopg", "+psycopg"), isolation_level="AUTOCOMMIT")
-    with admin.connect() as conn:
-        conn.execute(text("DROP DATABASE IF EXISTS page_history_models_mirror"))
-        conn.execute(text("CREATE DATABASE page_history_models_mirror"))
-    admin.dispose()
-
-    mirror = create_engine(mirror_url)
+    mirror = create_engine(pg_url)
     try:
-        Base.metadata.create_all(mirror)
-        differences = _diff(inspect(migrated_engine), inspect(mirror))
+        with mirror.begin() as conn:
+            conn.execute(text(f"DROP SCHEMA IF EXISTS {MIRROR_SCHEMA} CASCADE"))
+            conn.execute(text(f"CREATE SCHEMA {MIRROR_SCHEMA}"))
+
+        # schema_translate_map rewrites every unqualified name in the metadata into the
+        # mirror schema, for DDL as well as queries, so models.py needs no test-only
+        # knowledge of this. That includes the `tag_source` enum: the mirror gets its own
+        # `models_mirror.tag_source` rather than colliding with the one the migration
+        # created in public, and DROP SCHEMA CASCADE takes it away again.
+        with mirror.connect().execution_options(
+            schema_translate_map={None: MIRROR_SCHEMA}
+        ) as conn:
+            Base.metadata.create_all(conn)
+            conn.commit()
+
+        differences = _diff(
+            _InSchema(inspect(migrated_engine)),
+            _InSchema(inspect(mirror), MIRROR_SCHEMA),
+        )
     finally:
+        with mirror.begin() as conn:
+            conn.execute(text(f"DROP SCHEMA IF EXISTS {MIRROR_SCHEMA} CASCADE"))
         mirror.dispose()
-        admin = create_engine(pg_url, isolation_level="AUTOCOMMIT")
-        with admin.connect() as conn:
-            conn.execute(text("DROP DATABASE IF EXISTS page_history_models_mirror"))
-        admin.dispose()
 
     assert not differences, "SQL files and models disagree:\n  " + "\n  ".join(differences)
+
+
+class _InSchema:
+    """An inspector bound to one schema, so `_diff` can treat both sides alike.
+
+    Without this the two halves of the comparison would be asymmetric -- one passing
+    `schema=` everywhere and one not -- which is how a test ends up quietly inspecting
+    the wrong schema and passing.
+    """
+
+    def __init__(self, inspector, schema: str | None = None) -> None:
+        self._inspector = inspector
+        self._schema = schema
+
+    def get_table_names(self) -> list[str]:
+        return self._inspector.get_table_names(schema=self._schema)
+
+    def get_columns(self, table: str) -> list[dict]:
+        return self._inspector.get_columns(table, schema=self._schema)
+
+    def get_pk_constraint(self, table: str) -> dict:
+        return self._inspector.get_pk_constraint(table, schema=self._schema)
+
+    def get_unique_constraints(self, table: str) -> list[dict]:
+        return self._inspector.get_unique_constraints(table, schema=self._schema)
+
+    def get_foreign_keys(self, table: str) -> list[dict]:
+        return self._inspector.get_foreign_keys(table, schema=self._schema)
 
 
 def _fk_key(fk: dict) -> tuple:
@@ -252,6 +293,14 @@ def _diff(from_sql, from_models) -> list[str]:
                         f"{table}.{column} {attr}: sql={a[column][attr]!s} "
                         f"models={b[column][attr]!s}"
                     )
+
+            # str() on a reflected type uses the *generic* dialect, where an enum renders
+            # as VARCHAR(<longest label>) -- so the check above cannot tell an enum from a
+            # varchar of the same width, nor spot a changed label set. Compare the labels.
+            ea = getattr(a[column]["type"], "enums", None)
+            eb = getattr(b[column]["type"], "enums", None)
+            if ea != eb:
+                out.append(f"{table}.{column} enum labels: sql={ea} models={eb}")
             # Strip the cast Postgres adds when reflecting, so 'user'::tag_source and
             # 'user' compare equal.
             da = (a[column].get("default") or "").split("::")[0].strip("'")
