@@ -23,7 +23,12 @@ export class NotConfigured extends ApiError {
 }
 
 export class BookmarksApi {
-  constructor({ baseUrl, token, fetchImpl = globalThis.fetch }) {
+  // The default wraps `fetch` rather than holding a reference to it. `globalThis.fetch`
+  // detached from the window and then called as `this.fetch(...)` throws "Illegal
+  // invocation" in Chrome -- the browser's fetch checks what it is called on, and here
+  // that is this object. Node's fetch does not, so the test suite cannot see it: the
+  // stand-in in test/api.test.js exists to make that difference visible.
+  constructor({ baseUrl, token, fetchImpl = (...args) => globalThis.fetch(...args) }) {
     this.baseUrl = (baseUrl || '').replace(/\/+$/, '');
     this.token = token || '';
     this.fetch = fetchImpl;

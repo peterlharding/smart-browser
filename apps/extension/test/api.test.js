@@ -43,6 +43,27 @@ describe('configuration', () => {
     assert.equal(client.configured, false);
   });
 
+  it('calls the global fetch on the global, not on itself', async () => {
+    // Chrome's fetch throws "Illegal invocation" when it is called on anything but the
+    // window, so holding `globalThis.fetch` in a field and calling `this.fetch(...)`
+    // fails on every request -- while passing here, because Node's fetch does not care.
+    // This stand-in is deliberately as strict as the browser, so the suite can see it.
+    const real = globalThis.fetch;
+    let receiver = 'never called';
+    globalThis.fetch = function strict() {
+      receiver = this;
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      return { ok: true, status: 200, json: async () => ({ status: 'ok' }) };
+    };
+    try {
+      const client = new BookmarksApi({ baseUrl: 'https://example.test', token: 't' });
+      await client.health();
+    } finally {
+      globalThis.fetch = real;
+    }
+    assert.equal(receiver, globalThis, 'fetch must be invoked on the global object');
+  });
+
   it('strips trailing slashes so the path is not doubled', () => {
     const { client } = api([], { baseUrl: 'https://example.test///' });
     assert.equal(client.baseUrl, 'https://example.test');
