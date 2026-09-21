@@ -89,6 +89,19 @@ bulk-imports; see ADR 0007.
 
 ---
 
+## M3 — next
+
+Two designs for where the crawler runs — in the API on save, or a Postgres queue drained
+by a worker — are sketched against the schema in
+[`m3-crawler-options.md`](m3-crawler-options.md), with the recommendation and the one
+measurement that would overturn it. Undecided until an ADR says otherwise.
+
+**Blocked on one fact:** `CREATE EXTENSION vector` fails on a stock `postgres:18` image.
+Whether the running container has pgvector decides whether M3 starts with a container
+swap. Cheap to answer, cheap to act on with one save in the database.
+
+---
+
 ## Open questions
 
 ### 1. Which LLM for the backfill? *(blocks M4)*
