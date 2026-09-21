@@ -14,6 +14,7 @@ The first time it loads a page on the internet, the Mac's outbound firewall asks
 Answer it before assuming the browser is broken; an unanswered prompt looks like a page that never loads.
 
 Open Settings (`⌘,`) and enter the API's address and a token, the token half of an `API_TOKENS` entry.
+The address is where `make api-dev` listens: `API_HOST` and `API_PORT` from `.env`, `http://127.0.0.1:8000` by default.
 The token is kept in the Keychain through Electron's `safeStorage`, and never shown again.
 
 `SMART_BROWSER_USER_DATA=/some/dir` runs it with a separate profile, as the tests do, so experiments never touch the one you browse with.

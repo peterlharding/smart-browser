@@ -30,7 +30,7 @@ cp .env.example ../../.env            # or apps/api/.env; both are read
 
 make -C ../.. api-install             # uv sync
 make -C ../.. migrate                 # creates the schema
-make -C ../.. api-dev                 # http://127.0.0.1:8000/api/v1/docs
+make -C ../.. api-dev                 # http://API_HOST:API_PORT/api/v1/docs, from .env
 ```
 
 Dependencies are managed with [uv](https://docs.astral.sh/uv/). `uv.lock` is committed and

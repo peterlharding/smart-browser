@@ -148,8 +148,11 @@ test-browser-e2e: browser-build  ## End-to-end: the browser against the API on <
 api-install:  ## Sync the API environment from uv.lock
 	$(UV) sync
 
-api-dev:  ## Run the API with reload on :8000
-	$(UV) run uvicorn bookmarks_api.main:app --reload --port 8000
+# Where it listens comes from API_HOST and API_PORT, read from .env above (or the
+# environment), so the address a client is configured with is written down once.
+api-dev:  ## Run the API with reload on API_HOST:API_PORT from .env (default 127.0.0.1:8000)
+	$(UV) run uvicorn bookmarks_api.main:app --reload \
+	  --host $(or $(API_HOST),127.0.0.1) --port $(or $(API_PORT),8000)
 
 api-lint:  ## Lint and type-check the API
 	cd apps/api && uv run ruff check . && uv run mypy src

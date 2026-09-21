@@ -22,7 +22,7 @@ Chrome or any Chromium browser, unpacked:
 1. `chrome://extensions` → enable **Developer mode**
 2. **Load unpacked** → select `apps/extension/src`
 3. Open the extension's **Options** and set:
-   - **API address** — `http://127.0.0.1:8000` for a local `make api-dev`, or your
+   - **API address** — `http://127.0.0.1:8000` for a local `make api-dev`, or the `API_HOST` and `API_PORT` your `.env` sets, or your
      deployed host. No path; `/api/v1` is appended.
    - **API token** — one of the values in the server's `API_TOKENS`.
 4. Click **Test connection**. It reports the API version, contract version and schema

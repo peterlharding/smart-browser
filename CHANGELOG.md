@@ -9,6 +9,13 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Changed
+
+- **`make api-dev` listens where `.env` says**: `API_HOST` and `API_PORT`, which the
+  Makefile already read and `make chk-env` printed, but the target ignored in favour of a
+  hard-coded port 8000. It still defaults to `127.0.0.1:8000`, and both are now in
+  `.env.example`.
+
 ## [0.4.0] - 2026-09-21
 
 See [release_notes/v0.4.0.md](release_notes/v0.4.0.md) for details.
