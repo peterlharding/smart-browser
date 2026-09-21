@@ -11,6 +11,13 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **A version bump left `apps/api/uv.lock` stale.** The lockfile records the API
+  package's own version, `make version-set` never relocked it, and `make version-check`
+  never looked, so the first `uv run` after a release commit rewrote it. `version-set`
+  now relocks, and `version-check` fails on a stale lockfile for `apps/api` or `db`. It
+  unsets `UV_FROZEN` to do so, because under it, as in CI, `uv lock --check` only checks
+  that the file parses.
+
 - **IPv6 URLs were stored invalid.** `http://[::1]:8080/x` normalised to
   `http://::1:8080/x` because the brackets were dropped when the host was reassembled.
 - **`trkCampaign` never matched as a tracking parameter.** It was listed in mixed case

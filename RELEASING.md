@@ -56,7 +56,8 @@ release cannot be cut with an API that reports the wrong version.
    git diff   # expect only version fields to change
    ```
 
-   That wraps `npm version <version> --no-git-tag-version` and `scripts/version.py set`.
+   That wraps `npm version <version> --no-git-tag-version` and `scripts/version.py set`, then relocks `apps/api/uv.lock`, which records the API package's own version.
+   Expect that lockfile's version line in the diff too; `make version-check` fails if it is left behind.
 
 3. **Cut the changelog.** In `CHANGELOG.md`:
    - Move the items under `## [Unreleased]` into a new `## [<version>] - YYYY-MM-DD` section (today's date).

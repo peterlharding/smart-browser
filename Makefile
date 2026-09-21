@@ -56,13 +56,21 @@ check: version-check lint-md api-lint test  ## Everything the release checklist 
 	@echo
 	@echo "All checks passed."
 
-version-check:  ## Fail if the version has drifted between package.json, pyproject and __init__
+# uv.lock records the API package's own version, so a bump leaves it stale, and the next
+# `uv run` rewrites it after the release commit. `lock --check` fails on that; UV_FROZEN
+# is unset for it because under UV_FROZEN it only checks the file parses (CI sets it).
+version-check:  ## Fail if the version has drifted, or a lockfile has fallen behind its pyproject
 	@python3 scripts/version.py check
+	@env -u UV_FROZEN $(UV) lock --check --quiet || { \
+	  echo "apps/api/uv.lock is stale: run 'uv --project apps/api lock' and commit it"; exit 1; }
+	@env -u UV_FROZEN uv --project db lock --check --quiet || { \
+	  echo "db/uv.lock is stale: run 'uv --project db lock' and commit it"; exit 1; }
 
 version-set:  ## Set the version everywhere: make version-set VERSION=0.2.0
 	@test -n "$(VERSION)" || { echo "usage: make version-set VERSION=x.y.z"; exit 1; }
 	npm version $(VERSION) --no-git-tag-version --allow-same-version >/dev/null
 	@python3 scripts/version.py set $(VERSION)
+	$(UV) lock --quiet
 
 lint-md:  ## Lint every markdown file we wrote
 	npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#**/node_modules" "#**/.venv" "#**/venv" "#**/dist" "#**/.git"
