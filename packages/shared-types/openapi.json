@@ -3,7 +3,7 @@
   "info": {
     "title": "Smart-Browser Bookmarks API",
     "description": "Tag-first bookmarks. Contract version 1. See doc/architecture.md.",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "paths": {
     "/api/v1/health": {
