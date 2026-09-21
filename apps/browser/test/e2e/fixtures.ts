@@ -12,10 +12,10 @@ import { fileURLToPath } from 'node:url';
 const APP = fileURLToPath(new URL('../../', import.meta.url));
 const SNAPSHOTS = join(APP, 'test-results', 'snapshots');
 
-// On Linux (CI): the secret store is GNOME Keyring, which Chromium picks by itself only in
-// a desktop session, so it is named; and xvfb has no GPU, so capturing a page for a
-// snapshot fails unless Chromium renders in software.
-const LINUX_SWITCHES = ['--password-store=gnome-libsecret', '--disable-gpu'];
+// On Linux (CI): Playwright's loader forces --password-store=basic, which a preload undoes
+// (see linux-secret-store.cjs); and xvfb has no GPU, so capturing a page for a snapshot
+// fails unless Chromium renders in software.
+const LINUX_SWITCHES = ['-r', join(APP, 'test/e2e/linux-secret-store.cjs'), '--disable-gpu'];
 
 export const API = () => process.env.E2E_API_URL!;
 export const TOKEN = () => process.env.E2E_API_TOKEN!;
@@ -33,6 +33,9 @@ export class BrowserApp {
   static async launch(profile = mkdtempSync(join(tmpdir(), 'smart-browser-e2e-'))): Promise<BrowserApp> {
     const app = await _electron.launch({
       cwd: APP,
+      // Without this Playwright adds --no-sandbox on Linux: the tests run the browser as it
+      // ships, sandboxed, which is also why CI allows unprivileged user namespaces.
+      chromiumSandbox: true,
       // Chromium's switches before the app path: Electron hands everything after it to
       // the app, not to Chromium, so a switch there is silently ignored.
       args: [...(process.platform === 'linux' ? LINUX_SWITCHES : []), '.'],
