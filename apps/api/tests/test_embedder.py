@@ -177,3 +177,9 @@ def test_crawl_status_reports_the_embedding_pass(factory):
     with factory() as session:
         text = worker.status(session, embedding_label=embedder.label("fake/model"))
     assert "embedded 1 of 2 pages with content, as fake/model|title+description+text" in text
+
+
+def test_the_settings_default_to_the_embedders_default_model():
+    from bookmarks_api.config import Settings
+
+    assert Settings.model_fields["embedding_model"].default == embedder.DEFAULT_MODEL

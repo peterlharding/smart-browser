@@ -45,6 +45,12 @@ def test_related_pages_are_nearer_than_unrelated_ones(model):
     assert cosine(postgres, postgres_again) > cosine(postgres, bread) + 0.2
 
 
+def test_an_unknown_model_name_says_which_setting_to_fix():
+    """The name the example .env gave before 0.3.0, which fastembed does not know."""
+    with pytest.raises(ValueError, match="EMBEDDING_MODEL='bge-small-en-v1.5'.*'BAAI/' prefix"):
+        FastembedModel("bge-small-en-v1.5", get_settings().embedding_cache_dir)
+
+
 def test_a_page_longer_than_the_model_reads_is_truncated_not_refused(model):
     (vector,) = model.embed(["word " * 5000])
     assert len(vector) == EMBEDDING_DIM

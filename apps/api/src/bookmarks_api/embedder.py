@@ -31,6 +31,7 @@ from .models import EMBEDDING_DIM, Bookmark, BookmarkContent
 # What goes into a vector, named so that changing it is a re-embed: the label stored in
 # `bookmark_content.model` is the model *and* this.
 RECIPE = "title+description+text"
+DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 BATCH = 32
 IDLE_WAIT = 10.0
 
@@ -58,7 +59,17 @@ class FastembedModel:
         from fastembed import TextEmbedding  # heavy; only the embedder process pays for it
 
         self.name = name
-        self._model = TextEmbedding(name, cache_dir=str(Path(cache_dir).expanduser()))
+        try:
+            self._model = TextEmbedding(name, cache_dir=str(Path(cache_dir).expanduser()))
+        except ValueError as exc:
+            # fastembed's message names neither the setting nor the fix. Until 0.3.0 the
+            # example .env said `bge-small-en-v1.5`, which fastembed does not recognise.
+            raise ValueError(
+                f"EMBEDDING_MODEL={name!r} is not a model fastembed knows ({exc}). "
+                f"The default is {DEFAULT_MODEL!r}; fastembed names models with their "
+                f"publisher, so an EMBEDDING_MODEL copied from an example .env before 0.3.0 "
+                f"needs the 'BAAI/' prefix."
+            ) from exc
         self.dim = len(self.embed(["dimension probe"])[0])
 
     def embed(self, texts: list[str]) -> list[list[float]]:

@@ -28,7 +28,10 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 - The `EMBEDDING_BACKEND`, `EMBEDDING_DIM` and `OLLAMA_BASE_URL` settings, which nothing
   read. The dimension is the column's, fixed by `vector(384)` and checked by `make
   embed`. `EMBEDDING_MODEL` now names the model as `fastembed` does,
-  `BAAI/bge-small-en-v1.5`, and `EMBEDDING_CACHE_DIR` says where it is downloaded.
+  `BAAI/bge-small-en-v1.5`, and `EMBEDDING_CACHE_DIR` says where it is downloaded. An
+  `EMBEDDING_MODEL=bge-small-en-v1.5` copied from the old example `.env` is refused with
+  a message naming the setting and the `BAAI/` prefix it lacks, rather than fastembed's
+  own, which names neither.
 
 ### Documentation
 

@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     # Embeddings (ADR 0013). The model as fastembed names it; its dimension must match the
     # vector(384) column, which the embedder checks before writing. Downloaded once, 64 MB,
     # into the cache directory.
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"  # embedder.DEFAULT_MODEL
     embedding_cache_dir: str = "~/.cache/smart-browser/models"
 
     @property
