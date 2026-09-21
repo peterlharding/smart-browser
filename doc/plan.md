@@ -134,7 +134,15 @@ indicator; settings with a connection test and the token in the Keychain; and th
 check ADR 0005 promised. `make browser-dev` runs it; `make test-browser-e2e` drives the
 built app against the real API on the test database.
 
-Still to come in M5: the offline save queue, history, downloads, OAuth sign-in (with M1),
+**Local history, and the API only on action — 2026-09-22**
+([ADR 0016](decisions/0016-local-history-backend-on-action.md)). Using the first slice showed
+the browser asking the API about every page loaded; it now sends nothing while you browse,
+and the save button shows what this browser knows. Where you have been is kept locally in
+`history.db`: a History menu beyond Chrome's (full history, search, a site's history,
+recently closed tabs with ⇧⌘T, recent pages, a submenu per earlier day, Delete Browsing
+Data), and a history page laid out as Chrome's.
+
+Still to come in M5: the offline save queue, downloads, OAuth sign-in (with M1),
 packaging and signing, and auto-update. The tag sidebar is M6.
 
 **Possible enhancements** (not scheduled):
@@ -148,7 +156,8 @@ packaging and signing, and auto-update. The tag sidebar is M6.
   rejected this token".
 - **Stop answering "not saved" with a 404.** `GET /bookmarks/lookup` returns 404 for a
   page you have not saved, a normal answer that fills the API's log with `404 Not Found`
-  lines for every page browsed (seen 2026-09-21). A 200 with an empty body, or a
+  lines for every page browsed (seen 2026-09-21). Since ADR 0016 the browser looks a page
+  up only when the save sheet opens, so the noise is much smaller. A 200 with an empty body, or a
   `{"saved": false}` shape, would read as what it is. It changes a response both clients
   depend on, so it is a contract version bump (ADR 0005, ADR 0008), best made alongside
   another change that needs one.
@@ -210,6 +219,7 @@ ADR 0002 chose a global vocabulary. Adding a per-user private namespace later is
 | 2026-09-21 | Crawl worker: one page at a time, 10-minute lease, trafilatura, private addresses refused, robots.txt not consulted | [ADR 0012](decisions/0012-crawl-worker.md) |
 | 2026-09-21 | Embeddings through fastembed, one vector per page from its opening 512 tokens, in its own process | [ADR 0013](decisions/0013-embeddings.md) |
 | 2026-09-21 | Tag names: no comma, whitespace or control character, no length limit; aliases resolve on every path | [ADR 0014](decisions/0014-tag-names.md) |
+| 2026-09-22 | Browsing history is local; the browser contacts the API only when you act | [ADR 0016](decisions/0016-local-history-backend-on-action.md) |
 | 2026-09-21 | M5 moves ahead of M4, which waits on its open questions | this plan, M5 |
 | 2026-09-21 | Electron shell: TypeScript, Svelte, Vite and esbuild; overlay view; token in main only; first slice | [ADR 0015](decisions/0015-electron-shell.md) |
 | 2026-09-21 | First end-to-end save: extension → API → Postgres, verified in Swagger | this plan, M0 |
