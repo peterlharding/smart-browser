@@ -9,6 +9,25 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Added
+
+- **The browser's first slice** ([ADR 0015](doc/decisions/0015-electron-shell.md)),
+  moved ahead of M4, which waits on its open questions. An Electron shell in
+  `apps/browser/`: tabs with titles and favicons, dragged to reorder and restored on the
+  next launch; an omnibox that visits an address or searches, DuckDuckGo by default;
+  Chrome's shortcuts; `⌘⇧B` for the save sheet over the page and `⌘⇧S` to save without
+  asking, with a toolbar indicator of whether the page is saved; settings with a
+  connection test and the token in the Keychain; and the contract check ADR 0005 has
+  promised since 0.1.0. TypeScript, Svelte 5, Vite and esbuild; the API's types are
+  generated from the contract, so a change that breaks the browser fails `make check`.
+  Pages run sandboxed in their own session and cannot reach the browser's own UI, which is
+  served from a private `smart://` scheme with no network access. `make browser-dev` runs
+  it.
+- **The browser is tested end to end**: `make test-browser-e2e` drives the built app with
+  Playwright against the real API on the test database and a local site, and writes every
+  layer of the window to `test-results/snapshots/` at each checkpoint. CI runs it under
+  `xvfb`, with Chromium's sandbox left on.
+
 ### Fixed
 
 - **Tag names were not checked, and aliases resolved only when saving**

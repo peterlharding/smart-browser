@@ -1,0 +1,28 @@
+{
+  "name": "@smart-browser/browser",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "The Smart-Browser shell: Electron, tabs, and saving with tags (ADR 0015).",
+  "main": "out/main/index.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && electron .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json && svelte-check --tsconfig tsconfig.ui.json --fail-on-warnings",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@types/node": "^24.13.6",
+    "electron": "^44.4.3",
+    "esbuild": "^0.28.2",
+    "openapi-typescript": "^7.13.0",
+    "svelte": "^5.57.1",
+    "svelte-check": "^4.7.6",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}

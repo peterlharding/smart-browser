@@ -1,8 +1,8 @@
 # Smart-Browser — working notes for Claude Code
 
 A browser wrapping the Chrome engine where bookmarks behave like tags: one save, many
-categories, with AI categorisation over the corpus. Today it is an API plus a Chrome
-extension; the browser shell is M5.
+categories, with AI categorisation over the corpus. It is an API, a Chrome extension, and
+the first slice of the Electron browser (M5, ADR 0015).
 
 Read [`doc/plan.md`](doc/plan.md) first — it says what is done, what is next, and what is
 still an open question. Decisions live in [`doc/decisions/`](doc/decisions/) as ADRs;
@@ -38,6 +38,9 @@ make rehash-urls    # after any urlnorm.py change; CONFIRM=yes to apply
 make worker         # the crawl worker; ONCE=yes drains what is due and exits
 make embed          # the embedding pass; ONCE=yes embeds what is waiting and exits
 make test-model     # the real embedding model; downloads 64 MB once
+make browser-dev    # build and run the browser
+make browser-check  # the browser's type checks and unit tests (part of make check)
+make test-browser-e2e  # the built browser against the real API on <DB_NAME>_test
 make crawl-status   # jobs by state, latest errors
 make schema-drop CONFIRM=yes
 ```
@@ -47,7 +50,8 @@ make schema-drop CONFIRM=yes
 ```text
 apps/api/          FastAPI + SQLAlchemy 2.0 + psycopg 3.  Its own uv project.
 apps/extension/    MV3 Chrome extension.  Plain JS, node --test, no build step.
-apps/browser/      Electron shell (M5) — empty.
+apps/browser/      Electron shell (M5, ADR 0015). TypeScript, Svelte, Vite + esbuild.
+                   An npm workspace: `make browser-install` once.
 db/                alembic.ini, migrations/, schema/.  Its own uv project: migrating
                    needs alembic and psycopg, not the API package.
 doc/               plan, architecture, ADRs, NOTES.
@@ -99,6 +103,11 @@ failure is not evidence.**
   `test_the_schema_needs_no_special_privileges` holds the schema to that even when the
   suite connects as a superuser, as CI does. Keep it first in its module, and keep
   `test_migration_pg.py` sorting before any other Postgres module.
+- **Browser** (`make browser-check`, `make test-browser-e2e`): Vitest for the logic, and
+  Playwright driving the built app against the real API and a local site, with snapshots
+  of every layer in `apps/browser/test-results/snapshots/` to look at, not only assert on.
+  The UI, the tabs and the overlay are separate views of one window: Playwright sees each
+  as a page, and a detached view's page is gone, so fetch the overlay afresh after it opens.
 - **Extension** (`make test-ext`): `node --test`, no dependencies. Node's `fetch` does not
   check its receiver and Chrome's does, so the suite carries a stand-in that is as strict
   as the browser. Keep it that way.

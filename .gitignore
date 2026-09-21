@@ -203,3 +203,6 @@ venv/
 *.swo
 *~
 .DS_Store
+
+# The browser's end-to-end artefacts: traces, snapshots
+apps/browser/test-results/

@@ -47,12 +47,13 @@ help:  ## Show this help
         api-lint api-openapi openapi-check test test-api test-scripts test-ext test-pg \
         migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
         db-connect db-doctor db-bootstrap schema-drop rehash-urls \
-        worker embed crawl-backfill crawl-status test-model
+        worker embed crawl-backfill crawl-status test-model \
+        browser-install browser-build browser-dev browser-check test-browser-e2e
 
 
 # --- the release gate -------------------------------------------------------
 
-check: version-check openapi-check lint-md api-lint test  ## Everything the release checklist requires
+check: version-check openapi-check lint-md api-lint test browser-check  ## Everything the release checklist requires
 	@echo
 	@echo "All checks passed."
 
@@ -74,7 +75,7 @@ version-set:  ## Set the version everywhere: make version-set VERSION=0.2.0
 	@$(MAKE) --no-print-directory api-openapi
 
 lint-md:  ## Lint every markdown file we wrote
-	npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#**/node_modules" "#**/.venv" "#**/venv" "#**/dist" "#**/.git"
+	npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#**/node_modules" "#**/.venv" "#**/venv" "#**/dist" "#**/.git" "#**/test-results"
 
 
 # --- tests ------------------------------------------------------------------
@@ -112,6 +113,36 @@ test-pg:  ## Postgres suite against <DB_NAME>_test (creates and drops tables the
 	  target="$${url##*/}"; echo "running against $${target%%\?*}"; \
 	  cd apps/api && TEST_DATABASE_URL="$$url" uv run pytest -m postgres -q
 
+# --- the browser (ADR 0015) -------------------------------------------------
+
+browser-install:  ## Install the browser's dependencies from package-lock.json
+	npm ci
+
+browser-build:  ## Build the browser into apps/browser/out
+	npm --workspace apps/browser run build
+
+browser-dev:  ## Build and run the browser
+	npm --workspace apps/browser run dev
+
+browser-check:  ## Type-check the browser and run its unit tests
+	npm --workspace apps/browser run typecheck
+	npm --workspace apps/browser test
+
+# The built app against the real API on <DB_NAME>_test and a local site. Refuses the real
+# database, as test-pg does: global setup drops and rebuilds the test database's tables.
+test-browser-e2e: browser-build  ## End-to-end: the browser against the API on <DB_NAME>_test
+	@set -a; if [ -f ./.env ]; then . ./.env; fi; set +a; \
+	  DB_NAME="$${DB_NAME:-page_history}"; \
+	  url="$(TEST_DATABASE_URL)"; \
+	  if [ -z "$$url" ]; then \
+	    url="postgresql+psycopg://$$DB_USER:$$DB_PASSWORD@$$DB_HOST:$$DB_PORT/$${DB_NAME}_test"; \
+	  fi; \
+	  case "$$url" in \
+	    */$$DB_NAME|*/$$DB_NAME\?*) \
+	      echo "REFUSING: that URL points at $$DB_NAME, your real database."; exit 1;; \
+	  esac; \
+	  cd apps/browser && TEST_DATABASE_URL="$$url" npx playwright test
+
 # --- api --------------------------------------------------------------------
 
 api-install:  ## Sync the API environment from uv.lock
@@ -131,14 +162,24 @@ OPENAPI_DUMP := cd apps/api && uv run python -c "import json, sys; \
 	from bookmarks_api.main import app; \
 	sys.stdout.write(json.dumps(app.openapi(), indent=2) + chr(10))"
 
-api-openapi:  ## Regenerate the committed OpenAPI contract
-	@$(OPENAPI_DUMP) > $(CURDIR)/$(OPENAPI)
-	@echo "wrote $(OPENAPI)"
-	@git diff --stat $(OPENAPI)
+# The browser's types are generated from the contract, so a contract change that breaks
+# the browser fails its type check (ADR 0015). Regenerated with the contract, checked with it.
+API_TYPES    := apps/browser/src/shared/api-types.ts
+TYPES_FROM    = npx --no-install --loglevel=warn openapi-typescript $(1) -o $(2) >/dev/null
 
-openapi-check:  ## Fail if the committed OpenAPI contract differs from what the app serves
+api-openapi:  ## Regenerate the committed OpenAPI contract, and the browser's types from it
+	@$(OPENAPI_DUMP) > $(CURDIR)/$(OPENAPI)
+	@$(call TYPES_FROM,$(OPENAPI),$(API_TYPES))
+	@echo "wrote $(OPENAPI) and $(API_TYPES)"
+	@git diff --stat $(OPENAPI) $(API_TYPES)
+
+openapi-check:  ## Fail if the contract, or the browser's types from it, differ from what the app serves
 	@$(OPENAPI_DUMP) | diff -q - $(CURDIR)/$(OPENAPI) >/dev/null || { \
 	  echo "$(OPENAPI) is stale: run 'make api-openapi' and commit it"; exit 1; }
+	@tmp=$$(mktemp -d); $(call TYPES_FROM,$(OPENAPI),$$tmp/api-types.ts) && \
+	  diff -q $$tmp/api-types.ts $(API_TYPES) >/dev/null || { \
+	  rm -rf $$tmp; echo "$(API_TYPES) is stale: run 'make api-openapi' and commit it"; exit 1; }; \
+	  rm -rf $$tmp
 
 # --- the crawl worker (ADR 0012) --------------------------------------------
 

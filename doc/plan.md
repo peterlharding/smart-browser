@@ -12,7 +12,7 @@
 | **M1** | Identity: OAuth for Google and GitHub, token issue and rotation | API tokens are a stand-in; real sign-in replaces them | deferred — see below |
 | **M3** | Crawler: titles, text, embeddings. `bookmark_content`, pgvector | Nothing downstream works without extracted content | **done** |
 | **M4** | AI categorization: suggestions on save, backfill, review queue for proposals | Tagging stops depending on you thinking of the tag | not started |
-| **M5** | Electron shell: tabs, omnibox, OAuth sign-in, save sheet | First point a browser beats Chrome plus the extension | not started |
+| **M5** | Electron shell: tabs, omnibox, OAuth sign-in, save sheet | First point a browser beats Chrome plus the extension | first slice done; OAuth, packaging and more to come |
 | **M6** | Tag sidebar, multi-tag intersection, hybrid search | The thing you actually wanted | not started |
 
 **The gaps are deliberate.** M2 was an importer from the predecessor and M7 retired its
@@ -122,6 +122,23 @@ creates. Everything after that runs as `api`, verified.
 
 ---
 
+## M5 — first slice done
+
+**Moved ahead of M4 — 2026-09-21.** M4 waits on the open questions below, and the shell
+needs only the API as it is.
+
+The first slice ([ADR 0015](decisions/0015-electron-shell.md)) is in `apps/browser/`: tabs
+with titles and favicons, restored on the next launch; an omnibox that visits or searches;
+Chrome's shortcuts; the save sheet on `⌘⇧B`, quick save on `⌘⇧S` and a saved-state
+indicator; settings with a connection test and the token in the Keychain; and the contract
+check ADR 0005 promised. `make browser-dev` runs it; `make test-browser-e2e` drives the
+built app against the real API on the test database.
+
+Still to come in M5: the offline save queue, history, downloads, OAuth sign-in (with M1),
+packaging and signing, and auto-update. The tag sidebar is M6.
+
+---
+
 ## Open questions
 
 ### 1. Which LLM for the backfill? *(blocks M4)*
@@ -177,5 +194,7 @@ ADR 0002 chose a global vocabulary. Adding a per-user private namespace later is
 | 2026-09-21 | Crawl worker: one page at a time, 10-minute lease, trafilatura, private addresses refused, robots.txt not consulted | [ADR 0012](decisions/0012-crawl-worker.md) |
 | 2026-09-21 | Embeddings through fastembed, one vector per page from its opening 512 tokens, in its own process | [ADR 0013](decisions/0013-embeddings.md) |
 | 2026-09-21 | Tag names: no comma, whitespace or control character, no length limit; aliases resolve on every path | [ADR 0014](decisions/0014-tag-names.md) |
+| 2026-09-21 | M5 moves ahead of M4, which waits on its open questions | this plan, M5 |
+| 2026-09-21 | Electron shell: TypeScript, Svelte, Vite and esbuild; overlay view; token in main only; first slice | [ADR 0015](decisions/0015-electron-shell.md) |
 | 2026-09-21 | First end-to-end save: extension → API → Postgres, verified in Swagger | this plan, M0 |
 | 2026-09-20 | Schema on Alembic revisions; contract version separate from release version; compatibility enforced by checks, not numbers | [ADR 0005](decisions/0005-versioning-and-compatibility.md) |

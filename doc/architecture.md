@@ -42,6 +42,11 @@ mean shipping a new build. Acceptable for a personal tool; not for distributed s
 
 ### Layout
 
+The first slice settled the details, and a few differ from this sketch: the API client lives
+in the main process only, the UI is Svelte served from a private `smart://` scheme, and the
+save sheet floats in an overlay view. [ADR 0015](decisions/0015-electron-shell.md) is the
+current description; this block is kept as the plan it was.
+
 ```text
 smart-browser/
 ├── src/main/          # Electron main process
