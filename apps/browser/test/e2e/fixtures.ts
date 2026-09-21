@@ -33,7 +33,9 @@ export class BrowserApp {
   static async launch(profile = mkdtempSync(join(tmpdir(), 'smart-browser-e2e-'))): Promise<BrowserApp> {
     const app = await _electron.launch({
       cwd: APP,
-      args: ['.', ...(process.platform === 'linux' ? LINUX_SWITCHES : [])],
+      // Chromium's switches before the app path: Electron hands everything after it to
+      // the app, not to Chromium, so a switch there is silently ignored.
+      args: [...(process.platform === 'linux' ? LINUX_SWITCHES : []), '.'],
       env: { ...process.env, SMART_BROWSER_USER_DATA: profile },
     });
     const browser = new BrowserApp(app, profile);
