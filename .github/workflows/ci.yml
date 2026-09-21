@@ -152,5 +152,21 @@ jobs:
             # Prove the store works before the browser relies on it.
             echo -n probe | secret-tool store --label=ci-probe service ci-probe
             test "$(secret-tool lookup service ci-probe)" = probe
+            # DIAGNOSTIC, temporary: what safeStorage chooses here, and when.
+            cat > "$RUNNER_TEMP/probe.cjs" <<"PROBE"
+          const { app, safeStorage } = require("electron");
+          const report = (when) => console.log(`probe ${when}: backend=${safeStorage.getSelectedStorageBackend()} available=${safeStorage.isEncryptionAvailable()}`);
+          app.whenReady().then(async () => {
+            report("at ready");
+            await new Promise((r) => setTimeout(r, 3000));
+            report("after 3s");
+            try { safeStorage.encryptString("x"); console.log("probe encrypt ok"); } catch (e) { console.log("probe encrypt failed: " + e.message); }
+            report("after encrypt");
+            app.quit();
+          });
+          PROBE
+            echo "probe env: DBUS=${DBUS_SESSION_BUS_ADDRESS:-unset} XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-unset}"
+            xvfb-run --auto-servernum npx --no-install electron --password-store=gnome-libsecret --disable-gpu "$RUNNER_TEMP/probe.cjs" || true
+            XDG_CURRENT_DESKTOP=GNOME xvfb-run --auto-servernum npx --no-install electron --disable-gpu "$RUNNER_TEMP/probe.cjs" || true
             xvfb-run --auto-servernum make test-browser-e2e
           '
