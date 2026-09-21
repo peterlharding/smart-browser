@@ -162,8 +162,12 @@ class UserBookmark(Base):
     bookmark_id: Mapped[int] = mapped_column(
         BigId, ForeignKey("bookmark.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # Your title beats the crawled one, without overwriting it for everyone else.
+    # A title a person chose. It beats everything, and only PATCH writes it.
     title_override: Mapped[str | None] = mapped_column(Text)
+    # The title the client saw when it saved: the tab title, for the extension. Per save
+    # rather than on `bookmark`, because a tab title can be private in a way a URL is not.
+    # POST writes it, and a re-save with a title refreshes it (ADR 0010).
+    saved_title: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     saved_from: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = _now()
@@ -184,7 +188,13 @@ class UserBookmark(Base):
 
     @property
     def title(self) -> str | None:
-        return self.title_override or self.bookmark.title
+        """What you typed, then what you saw, then what the crawler fetched (ADR 0010).
+
+        The saved title outranks the crawled one because for the pages where they differ
+        most -- behind a login, where the crawler sees "Sign in", or single-page apps,
+        where it sees the framework's default -- the saved one is the right one.
+        """
+        return self.title_override or self.saved_title or self.bookmark.title
 
     def __repr__(self) -> str:
         return f"<UserBookmark {self.id} user={self.user_id} bookmark={self.bookmark_id}>"

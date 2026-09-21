@@ -321,6 +321,69 @@ def test_downgrade_removes_everything(pg_url):
     engine.dispose()
 
 
+def test_0003_moves_titles_seen_out_of_the_override_and_back(pg_url):
+    """Every override before 0003 was a tab title written by a client (ADR 0010).
+
+    Up, it moves to saved_title and the override is cleared. Down, it goes back, and where
+    a save has both, the override -- the one a person chose -- is the one kept.
+    """
+    from alembic import command
+
+    engine = create_engine(pg_url)
+    cfg = alembic_config(pg_url)
+    command.upgrade(cfg, "0002")
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO app_user (display_name) VALUES ('plh')"))
+            for n, override in ((1, "Seen in the tab"), (2, None)):
+                url = f"https://example.com/{n}"
+                conn.execute(
+                    text("INSERT INTO bookmark (url, url_hash) VALUES (:u, :h)"),
+                    {"u": url, "h": url_hash(url)},
+                )
+                conn.execute(
+                    text("INSERT INTO user_bookmark (user_id, bookmark_id, title_override) "
+                         "SELECT u.id, b.id, :t FROM app_user u, bookmark b WHERE b.url = :u"),
+                    {"t": override, "u": url},
+                )
+
+        def titles():
+            with engine.connect() as conn:
+                return conn.execute(text(
+                    "SELECT b.url, ub.title_override, ub.saved_title FROM user_bookmark ub "
+                    "JOIN bookmark b ON b.id = ub.bookmark_id ORDER BY b.url"
+                )).all()
+
+        command.upgrade(cfg, "0003")
+        assert titles() == [
+            ("https://example.com/1", None, "Seen in the tab"),
+            ("https://example.com/2", None, None),
+        ]
+
+        # A person now chooses a title for the second save, which also has one seen.
+        with engine.begin() as conn:
+            conn.execute(text(
+                "UPDATE user_bookmark SET title_override = 'Mine', saved_title = 'Seen' "
+                "WHERE bookmark_id = (SELECT id FROM bookmark WHERE url LIKE '%/2')"
+            ))
+
+        command.downgrade(cfg, "0002")
+        with engine.connect() as conn:
+            restored = conn.execute(text(
+                "SELECT b.url, ub.title_override FROM user_bookmark ub "
+                "JOIN bookmark b ON b.id = ub.bookmark_id ORDER BY b.url"
+            )).all()
+        assert restored == [
+            ("https://example.com/1", "Seen in the tab"),
+            ("https://example.com/2", "Mine"),
+        ]
+    finally:
+        command.downgrade(cfg, "base")
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        engine.dispose()
+
+
 # --- the two sources of truth must agree ------------------------------------
 
 MIRROR_SCHEMA = "models_mirror"

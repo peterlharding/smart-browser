@@ -11,6 +11,11 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **Saving a link from the context menu gave it the wrong title.** The extension sent the
+  link's URL with the current tab's title, so the saved page carried the title of the
+  page that linked to it. A link save now sends no title and the crawler supplies one.
+  The choice is a pure function, `contextMenuTarget`, so `node --test` covers it.
+
 - **CI had failed on every push, and neither job reached its tests.** The `check` job
   passed `UV="uv --project apps/api --frozen"`, which put `--frozen` in front of `sync`,
   where uv does not accept it. `UV_FROZEN=1` now covers every uv command in the run,
@@ -125,6 +130,16 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Changed
 
+- **The title seen at save time has its own column**, `user_bookmark.saved_title`
+  (revision `0003`, [ADR 0010](doc/decisions/0010-title-seen-at-save.md)). The extension
+  had been writing the tab title into `title_override`, which wins over everything, so
+  the titles M3 is about to crawl would never have shown for anything saved from the
+  extension, and a title you corrected was indistinguishable from one Chrome showed.
+  `POST /bookmarks` `title` now writes `saved_title` and a re-save with a title refreshes
+  it; `PATCH` `title` still writes `title_override`. Display is what you typed, then what
+  you saw, then what was crawled: behind a login the crawler sees "Sign in", so the
+  saved title outranks it. Existing overrides move to `saved_title`, since no client has
+  ever let anyone type one. Request and response shapes are unchanged; contract `1`.
 - **The API path is `/api/v1`, not `/api/v2`**, and `API_CONTRACT_VERSION` is `1`. The
   `2` was inherited from the predecessor, where it meant something; here it named a v1
   that never existed. One client, one constant and one generated contract file — the

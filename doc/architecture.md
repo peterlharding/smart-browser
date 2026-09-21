@@ -155,7 +155,8 @@ CREATE TABLE user_bookmark (
     id            bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id         bigint      NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
     bookmark_id     bigint      NOT NULL REFERENCES bookmark(id) ON DELETE CASCADE,
-    title_override  text,                        -- your title beats the crawled one
+    title_override  text,                        -- the title you typed; beats everything
+    saved_title     text,                        -- the title seen at save (ADR 0010)
     notes           text,
     saved_from      text,                        -- the client that posted it (was `host`)
     created_at      timestamptz NOT NULL DEFAULT now(),

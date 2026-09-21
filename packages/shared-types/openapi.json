@@ -621,7 +621,8 @@
                 "type": "null"
               }
             ],
-            "title": "Title"
+            "title": "Title",
+            "description": "The page's title as the client saw it, such as the browser tab's title. Refreshed by every save that sends one. A title you choose goes through PATCH instead, and wins over this one and over the crawled title."
           },
           "saved_from": {
             "anyOf": [
@@ -778,7 +779,8 @@
                 "type": "null"
               }
             ],
-            "title": "Title"
+            "title": "Title",
+            "description": "A title you choose. It wins over the title seen at save time and the crawled one, and survives every re-save. An empty string clears it."
           },
           "notes": {
             "anyOf": [

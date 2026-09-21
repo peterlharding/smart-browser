@@ -5,6 +5,7 @@ are duplicate URLs, created by an endpoint that inserts unconditionally.
 """
 
 from fastapi import status
+from sqlalchemy import select
 
 
 def post(client, auth, **payload):
@@ -281,3 +282,114 @@ def test_lookup_requires_a_token(client, auth):
     assert client.get(
         "/api/v1/bookmarks/lookup", params={"url": "https://example.com/a"}
     ).status_code == status.HTTP_401_UNAUTHORIZED
+
+
+# --- titles (ADR 0010) ---------------------------------------------------------
+#
+# Three candidates: what you typed (title_override, PATCH), what you saw (saved_title,
+# POST) and what the crawler fetched (bookmark.title, the M3 worker). Displayed in that
+# order. `crawled` below writes bookmark.title directly, as the worker will.
+
+
+def crawled(db, url: str, title: str) -> None:
+    from bookmarks_api.models import Bookmark
+    from bookmarks_api.urlnorm import url_hash
+
+    page = db.execute(select(Bookmark).where(Bookmark.url_hash == url_hash(url))).scalar_one()
+    page.title = title
+    db.commit()
+
+
+def saved(db, save_id: int):
+    from bookmarks_api.models import UserBookmark
+
+    db.expire_all()
+    return db.get(UserBookmark, save_id)
+
+
+def test_the_title_sent_with_a_save_is_the_title_seen_not_an_override(client, auth, db):
+    body = post(client, auth, url="https://example.com/a", title="Seen in the tab").json()
+    assert body["title"] == "Seen in the tab"
+
+    row = saved(db, body["id"])
+    assert row.saved_title == "Seen in the tab"
+    assert row.title_override is None, "POST must never write the column only PATCH owns"
+
+
+def test_the_crawled_title_shows_when_nothing_was_seen(client, auth, db):
+    body = post(client, auth, url="https://example.com/a").json()
+    assert body["title"] is None
+
+    crawled(db, "https://example.com/a", "Crawled title")
+    assert client.get(f"/api/v1/bookmarks/{body['id']}", headers=auth).json()["title"] == (
+        "Crawled title"
+    )
+
+
+def test_the_title_seen_beats_the_crawled_one(client, auth, db):
+    """Behind a login the crawler sees "Sign in"; what the browser showed is right."""
+    body = post(client, auth, url="https://mail.example/inbox", title="Inbox (3)").json()
+    crawled(db, "https://mail.example/inbox", "Sign in")
+
+    assert client.get(f"/api/v1/bookmarks/{body['id']}", headers=auth).json()["title"] == (
+        "Inbox (3)"
+    )
+
+
+def test_a_title_you_choose_beats_both(client, auth, db):
+    body = post(client, auth, url="https://example.com/a", title="Seen").json()
+    crawled(db, "https://example.com/a", "Crawled")
+
+    r = client.patch(f"/api/v1/bookmarks/{body['id']}", json={"title": "Mine"}, headers=auth)
+    assert r.json()["title"] == "Mine"
+
+
+def test_a_resave_refreshes_the_title_seen(client, auth, db):
+    body = post(client, auth, url="https://example.com/a", title="Draft: a post").json()
+    r = post(client, auth, url="https://example.com/a", title="A post")
+
+    assert r.status_code == status.HTTP_200_OK
+    assert r.json()["title"] == "A post"
+    assert saved(db, body["id"]).saved_title == "A post"
+
+
+def test_a_resave_without_a_title_keeps_the_one_seen(client, auth, db):
+    body = post(client, auth, url="https://example.com/a", title="Seen").json()
+    post(client, auth, url="https://example.com/a")
+    post(client, auth, url="https://example.com/a", title="   ")
+
+    assert saved(db, body["id"]).saved_title == "Seen"
+
+
+def test_a_resave_never_disturbs_a_title_you_chose(client, auth, db):
+    body = post(client, auth, url="https://example.com/a", title="Seen").json()
+    client.patch(f"/api/v1/bookmarks/{body['id']}", json={"title": "Mine"}, headers=auth)
+
+    r = post(client, auth, url="https://example.com/a", title="Seen again")
+    assert r.json()["title"] == "Mine"
+    row = saved(db, body["id"])
+    assert (row.title_override, row.saved_title) == ("Mine", "Seen again")
+
+
+def test_a_blank_title_is_no_title(client, auth, db):
+    """A whitespace title would outrank the crawled one and display as nothing."""
+    body = post(client, auth, url="https://example.com/a", title="  ").json()
+    assert saved(db, body["id"]).saved_title is None
+
+    crawled(db, "https://example.com/a", "Crawled")
+    assert client.get(f"/api/v1/bookmarks/{body['id']}", headers=auth).json()["title"] == (
+        "Crawled"
+    )
+
+
+def test_one_persons_title_seen_is_invisible_to_another(client, auth, other_auth):
+    """Per save, not on the shared bookmark row: a tab title can be private."""
+    post(client, auth, url="https://mail.example/inbox", title="Inbox - someone@example.com")
+    other = post(client, other_auth, url="https://mail.example/inbox").json()
+    assert other["title"] is None
+
+
+def test_text_search_matches_the_title_seen(client, auth):
+    post(client, auth, url="https://example.com/a", title="Postgres tuning")
+    found = client.get("/api/v1/bookmarks", params={"q": "tuning"}, headers=auth).json()
+    assert found["total"] == 1

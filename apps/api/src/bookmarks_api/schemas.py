@@ -15,7 +15,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class BookmarkCreate(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
-    title: str | None = Field(default=None, max_length=1024)
+    title: str | None = Field(
+        default=None,
+        max_length=1024,
+        description=(
+            "The page's title as the client saw it, such as the browser tab's title. "
+            "Refreshed by every save that sends one. A title you choose goes through PATCH "
+            "instead, and wins over this one and over the crawled title."
+        ),
+    )
     saved_from: str | None = Field(default=None, max_length=256)
     tags: list[str] = Field(default_factory=list)
 
@@ -31,7 +39,14 @@ class BookmarkCreate(BaseModel):
 
 
 class BookmarkPatch(BaseModel):
-    title: str | None = Field(default=None, max_length=1024)
+    title: str | None = Field(
+        default=None,
+        max_length=1024,
+        description=(
+            "A title you choose. It wins over the title seen at save time and the crawled "
+            "one, and survives every re-save. An empty string clears it."
+        ),
+    )
     notes: str | None = None
     tags: list[str] | None = None
 

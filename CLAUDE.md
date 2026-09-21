@@ -53,10 +53,13 @@ packages/shared-types/openapi.json   generated; `make api-openapi`.
 
 - **The DDL is SQL files**, one per object, in `db/schema/create/`. Each Alembic revision
   has **its own manifest** — `create_tables.sql` is `0001`, `create_content.sql` is
-  `0002` — and the revision executes the files its manifest names
-  (`db/migrations/sqlrunner.py`). Manifests are never nested: the runner would execute a
-  file of meta-commands and silently do nothing. A test insists every create file is named
-  by exactly one manifest.
+  `0002`, `create_saved_title.sql` is `0003` — and the revision executes the files its
+  manifest names (`db/migrations/sqlrunner.py`). Manifests are never nested: the runner
+  would execute a file of meta-commands and silently do nothing. A test insists every
+  create file is named by exactly one manifest.
+- **Never edit a file an earlier revision runs.** Revision `0001` executes
+  `user_bookmark.sql` as it is *now*, so a new column is a new file
+  (`user_bookmark_saved_title.sql`) in a new revision, with its reverse in `schema/drop/`.
 - Keys are `bigint GENERATED ALWAYS AS IDENTITY`; foreign keys are `bigint`. `ALWAYS`,
   not `BY DEFAULT`: an explicit id written past the sequence collides later, long after
   whatever wrote it is forgotten. `OVERRIDING SYSTEM VALUE` is the deliberate escape hatch.
@@ -113,6 +116,11 @@ M0 is done and proven end-to-end. M3 is in progress: revision `0002` added
 transaction (ADR 0009). **Next: the worker** — claim with `FOR UPDATE SKIP LOCKED`, fetch
 through an injected fetcher, extract, back off — plus a backfill for saves made before the
 queue existed. Embeddings come after, as a second pass over `embedding IS NULL`.
+
+Titles (ADR 0010, revision `0003`): `title_override` is what you typed (PATCH only),
+`user_bookmark.saved_title` is what the client saw (POST), `bookmark.title` is what the
+crawler fetched, displayed in that order. The worker writes `bookmark.title` and nothing
+else about titles.
 
 M1 (OAuth) is deferred behind M3: it replaces a working bearer token for one user, and it
 needs a deployment that can receive a callback. This runs locally for now.

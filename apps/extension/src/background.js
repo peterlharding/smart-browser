@@ -7,6 +7,7 @@
  */
 
 import { BookmarksApi } from './lib/api.js';
+import { contextMenuTarget } from './lib/quicksave.js';
 import { loadSettings } from './lib/settings.js';
 
 const CONTEXT_MENU_ID = 'smart-browser-save';
@@ -21,7 +22,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== CONTEXT_MENU_ID) return;
-  quickSave({ url: info.linkUrl || info.pageUrl || tab?.url, title: tab?.title, tabId: tab?.id });
+  quickSave(contextMenuTarget(info, tab));
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
@@ -36,7 +37,7 @@ async function quickSave({ url, title, tabId }) {
   const api = new BookmarksApi(settings);
 
   try {
-    const bookmark = await api.save({ url, title: title || '' });
+    const bookmark = await api.save({ url, title });
     // No tags, so say so: an untagged save is the thing worth noticing, not celebrating.
     await flashBadge(tabId, bookmark.tags.length ? '✓' : '+', bookmark.tags.length ? '#2e7d32' : '#b26a00');
   } catch (error) {

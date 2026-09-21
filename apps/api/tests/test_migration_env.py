@@ -40,6 +40,9 @@ CREATE_DIR = SCHEMA_DIR / "create"
 MANIFESTS = {
     "0001": (CREATE_DIR / "create_tables.sql", SCHEMA_DIR / "drop" / "drop_tables.sql"),
     "0002": (CREATE_DIR / "create_content.sql", SCHEMA_DIR / "drop" / "drop_content.sql"),
+    "0003": (
+        CREATE_DIR / "create_saved_title.sql", SCHEMA_DIR / "drop" / "drop_saved_title.sql",
+    ),
 }
 MANIFEST = MANIFESTS["0001"][0]
 
@@ -167,15 +170,25 @@ def test_create_files_carry_no_drop_statements():
 
 @pytest.mark.parametrize("revision", sorted(MANIFESTS))
 def test_the_drop_script_reverses_the_create_order(revision):
-    """Dropping in creation order fails on the first foreign key."""
+    """Dropping in creation order fails on the first foreign key.
+
+    A create file is named for the object it makes: `crawl_job.sql` for a table or type,
+    `user_bookmark_saved_title.sql` for a column added to an existing table. The drop
+    script names the same object, as `DROP TABLE|TYPE IF EXISTS crawl_job` or `ALTER
+    TABLE user_bookmark DROP COLUMN IF EXISTS saved_title`.
+    """
     manifest, drop_script = MANIFESTS[revision]
     created = [Path(name).stem for name in _manifest_names(manifest)]
     drop_sql = drop_script.read_text()
-    dropped = re.findall(
-        r"^\s*DROP\s+(?:TABLE|TYPE)\s+IF\s+EXISTS\s+(\w+)",
-        drop_sql,
-        re.IGNORECASE | re.MULTILINE,
-    )
+    dropped = [
+        match["name"] or f"{match['table']}_{match['column']}"
+        for match in re.finditer(
+            r"^\s*(?:DROP\s+(?:TABLE|TYPE)\s+IF\s+EXISTS\s+(?P<name>\w+)"
+            r"|ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?P<table>\w+)\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+(?P<column>\w+))",
+            drop_sql,
+            re.IGNORECASE | re.MULTILINE,
+        )
+    ]
 
     assert set(dropped) == set(created), (
         f"create and drop cover different objects: "

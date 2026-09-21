@@ -178,6 +178,9 @@ def save_bookmark(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
     bookmark = _upsert_bookmark(db, payload.url)
+    # Blank is absent: a whitespace title would otherwise outrank the crawled one and
+    # display as nothing.
+    seen_title = (payload.title or "").strip() or None
 
     # RETURNING rather than rowcount: it says which row, not merely how many, and it is
     # the same single statement either way.
@@ -187,7 +190,7 @@ def save_bookmark(
             user_id=user.id,
             bookmark_id=bookmark.id,
             saved_from=payload.saved_from or "api",
-            title_override=payload.title or None,
+            saved_title=seen_title,
         )
         .on_conflict_do_nothing(index_elements=[UserBookmark.user_id, UserBookmark.bookmark_id])
         .returning(UserBookmark.id)
@@ -199,6 +202,12 @@ def save_bookmark(
             UserBookmark.user_id == user.id, UserBookmark.bookmark_id == bookmark.id
         )
     ).scalar_one()
+
+    # The title as seen now, not as seen the first time: saving is an explicit act on the
+    # page as it currently is, and titles change. `title_override` is never touched here;
+    # it is yours, and only PATCH writes it (ADR 0010).
+    if not created and seen_title:
+        save.saved_title = seen_title
 
     # Re-saving a page you had deleted brings it back rather than staying invisible.
     if save.deleted_at is not None:
@@ -267,6 +276,7 @@ def list_bookmarks(
             Bookmark.title.ilike(pattern)
             | Bookmark.url.ilike(pattern)
             | UserBookmark.title_override.ilike(pattern)
+            | UserBookmark.saved_title.ilike(pattern)
         )
 
     if site:
