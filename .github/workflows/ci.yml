@@ -124,14 +124,15 @@ jobs:
       - name: Install the browser's dependencies
         run: make browser-install
 
+      # Ubuntu 24.04's AppArmor stops unprivileged user namespaces, which Chromium's
+      # sandbox needs. Allowing them keeps the sandbox on rather than passing --no-sandbox;
+      # it comes first, because even `electron --version` starts Chromium and checks.
+      - name: Allow Chromium's sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       # Electron 44 downloads its binary on first run rather than on install.
       - name: Fetch Electron
         run: npx --no-install electron --version
-
-      # Ubuntu 24.04's AppArmor stops unprivileged user namespaces, which Chromium's
-      # sandbox needs. Allowing them keeps the sandbox on rather than passing --no-sandbox.
-      - name: Allow Chromium's sandbox
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Browser end to end
         env:
