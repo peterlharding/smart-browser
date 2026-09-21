@@ -1,15 +1,19 @@
 
 
-API_HOST     := $(shell grep -s API_HOST=      .env | sed 's/.*=//')
-API_PORT     := $(shell grep -s API_PORT=      .env | sed 's/.*=//')
-DB_HOST      := $(shell grep -s DB_HOST=       .env | sed 's/.*=//')
-DB_PORT      := $(shell grep -s DB_PORT=       .env | sed 's/.*=//')
-DB_USER      := $(shell grep -s DB_USER=       .env | sed 's/.*=//')
+# `?=`, not `:=`: a value already in the environment wins over .env. With `:=` the .env
+# value replaced it, and because make exports a variable that arrived from the
+# environment, it replaced it in the recipe too -- so `DB_NAME=page_history_test make
+# migrate` announced the test database and migrated the real one.
+API_HOST     ?= $(shell grep -s API_HOST=      .env | sed 's/.*=//')
+API_PORT     ?= $(shell grep -s API_PORT=      .env | sed 's/.*=//')
+DB_HOST      ?= $(shell grep -s DB_HOST=       .env | sed 's/.*=//')
+DB_PORT      ?= $(shell grep -s DB_PORT=       .env | sed 's/.*=//')
+DB_USER      ?= $(shell grep -s DB_USER=       .env | sed 's/.*=//')
 # DB_PASSWORD is deliberately NOT a make variable. Make echoes recipes with variables
 # already substituted, so a single un-@'d line puts the password in the terminal, the
 # scrollback, and any CI log. The recipes below read it in the shell instead, where make
 # never sees it.
-DB_NAME      := $(shell grep -s DB_NAME=       .env | sed 's/.*=//')
+DB_NAME      ?= $(shell grep -s DB_NAME=       .env | sed 's/.*=//')
 # The role that installs extensions. Not DB_USER: pgvector is not a trusted extension, so
 # CREATE EXTENSION needs a superuser, and the application role is deliberately not one.
 # Override on the command line if your superuser is named something else:
@@ -141,9 +145,17 @@ schema-drop:  ## DESTRUCTIVE. Drop every schema object: make schema-drop CONFIRM
 	@test "$(CONFIRM)" = "yes" || { \
 	  echo "This drops every table and type in the configured database."; \
 	  echo "Re-run with CONFIRM=yes if that is what you want."; exit 1; }
-	@set -a; . .env; set +a; \
-	  PGPASSWORD="$$DB_PASSWORD" psql -h "$$DB_HOST" -p "$$DB_PORT" -U "$$DB_USER" \
-	    -d "$$DB_NAME" -v ON_ERROR_STOP=1 \
+	@# Every revision's drop script, newest first: 0002's tables hold foreign keys to
+	@# 0001's, so dropping 0001's alone fails part way through.
+	@# .env is read for DB_PASSWORD only. The connection uses make's values, which let the
+	@# environment win; re-reading them from .env here would drop the .env database while
+	@# `DB_NAME=scratch make schema-drop` asked for another.
+	@set -a; . ./.env; set +a; \
+	  echo "Dropping every schema object in $(DB_NAME) on $(DB_HOST):$(DB_PORT)"; \
+	  PGPASSWORD="$$DB_PASSWORD" psql -h "$(DB_HOST)" -p "$(DB_PORT)" -U "$(DB_USER)" \
+	    -d "$(DB_NAME)" -v ON_ERROR_STOP=1 \
+	    -f db/schema/drop/drop_saved_title.sql \
+	    -f db/schema/drop/drop_content.sql \
 	    -f db/schema/drop/drop_tables.sql \
 	    -c 'DROP TABLE IF EXISTS alembic_version'
 	@echo

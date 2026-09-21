@@ -11,6 +11,17 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **`DB_NAME=... make <target>` acted on the `.env` database, not the one named.** The
+  Makefile read `.env` with `:=`, which replaced a value from the environment, and make
+  exports a variable that arrived from the environment, so the recipe saw the `.env` value
+  too. `DB_NAME=page_history_test make migrate` announced nothing wrong and migrated the
+  real database. They are `?=` now, and the environment wins. `schema-drop` had the same
+  flaw a second time: it re-read `.env` in the shell, so `DB_NAME=scratch make schema-drop
+  CONFIRM=yes` would have dropped the real database. It now reads `.env` for the password
+  only, and says which database it is dropping.
+- **`make schema-drop` failed part way on any database past revision `0001`.** It ran
+  only `drop_tables.sql`, whose `bookmark` is referenced by `0002`'s tables. It now runs
+  every revision's drop script, newest first.
 - **Saving a link from the context menu gave it the wrong title.** The extension sent the
   link's URL with the current tab's title, so the saved page carried the title of the
   page that linked to it. A link save now sends no title and the crawler supplies one.
