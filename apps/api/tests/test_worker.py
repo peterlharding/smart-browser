@@ -17,7 +17,10 @@ from bookmarks_api import worker
 from bookmarks_api.fetch import FetchResult, Permanent, Transient
 from bookmarks_api.models import Bookmark, BookmarkContent, CrawlJob, JobState
 
-T0 = datetime(2026, 9, 21, 12, 0, tzinfo=UTC)
+# "Now", for the worker. Jobs get next_attempt_at from the real clock when they are saved,
+# so T0 must be after that: an hour ahead of the run. It was once a fixed date, and every
+# test that claims a job failed from noon on that day on, when real time overtook it.
+T0 = datetime.now(UTC).replace(microsecond=0) + timedelta(hours=1)
 ARTICLE = (
     b"<html><head><title>Tuning Postgres</title>"
     b'<meta name="description" content="Make it fast."></head><body><article>'
