@@ -27,12 +27,21 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
+
 from bookmarks_api.config import MIGRATIONS_DIR
 
 ENV_PY = MIGRATIONS_DIR / "env.py"
 SCHEMA_DIR = MIGRATIONS_DIR.parent / "schema"
 CREATE_DIR = SCHEMA_DIR / "create"
-MANIFEST = CREATE_DIR / "create_tables.sql"
+# One manifest per Alembic revision, each paired with the drop script that reverses it.
+# Deliberately not nested: the runner executes the files a manifest names, so a manifest
+# naming another manifest would run a file of meta-commands and quietly do nothing.
+MANIFESTS = {
+    "0001": (CREATE_DIR / "create_tables.sql", SCHEMA_DIR / "drop" / "drop_tables.sql"),
+    "0002": (CREATE_DIR / "create_content.sql", SCHEMA_DIR / "drop" / "drop_content.sql"),
+}
+MANIFEST = MANIFESTS["0001"][0]
 
 INCLUDE = re.compile(r"^\s*\\ir?\s+(\S+)\s*;?\s*$", re.MULTILINE)
 
@@ -45,8 +54,8 @@ def _function(name: str) -> ast.FunctionDef:
     raise AssertionError(f"{name}() not found in {ENV_PY}")
 
 
-def _manifest_names() -> list[str]:
-    return INCLUDE.findall(MANIFEST.read_text())
+def _manifest_names(manifest: Path = MANIFEST) -> list[str]:
+    return INCLUDE.findall(manifest.read_text())
 
 
 # --- env.py ------------------------------------------------------------------
@@ -111,18 +120,34 @@ def test_a_preset_url_is_respected():
 # --- the schema files --------------------------------------------------------
 
 
-def test_every_file_the_manifest_names_exists():
-    named = _manifest_names()
-    assert named, "create_tables.sql names no files"
+@pytest.mark.parametrize("revision", sorted(MANIFESTS))
+def test_every_file_the_manifest_names_exists(revision):
+    manifest, _ = MANIFESTS[revision]
+    named = _manifest_names(manifest)
+    assert named, f"{manifest.name} names no files"
     missing = [name for name in named if not (CREATE_DIR / name).exists()]
-    assert not missing, f"named by the manifest but absent: {missing}"
+    assert not missing, f"named by {manifest.name} but absent: {missing}"
 
 
-def test_every_create_file_is_in_the_manifest():
-    """A file nobody includes is a table that never gets created."""
-    on_disk = {path.name for path in CREATE_DIR.glob("*.sql")} - {MANIFEST.name}
-    orphans = sorted(on_disk - set(_manifest_names()))
-    assert not orphans, f"in schema/create but not in create_tables.sql: {orphans}"
+def test_every_create_file_is_in_exactly_one_manifest():
+    """A file nobody includes is a table that never gets created.
+
+    Exactly one, not at least one: a file named by two revisions would be created twice,
+    and the second run fails on a database that has already had the first.
+    """
+    manifests = {manifest.name for manifest, _ in MANIFESTS.values()}
+    on_disk = {path.name for path in CREATE_DIR.glob("*.sql")} - manifests
+
+    named: dict[str, list[str]] = {}
+    for manifest, _ in MANIFESTS.values():
+        for name in _manifest_names(manifest):
+            named.setdefault(name, []).append(manifest.name)
+
+    orphans = sorted(on_disk - set(named))
+    assert not orphans, f"in schema/create but named by no manifest: {orphans}"
+
+    twice = {name: where for name, where in named.items() if len(where) > 1}
+    assert not twice, f"named by more than one manifest: {twice}"
 
 
 def test_create_files_carry_no_drop_statements():
@@ -140,10 +165,12 @@ def test_create_files_carry_no_drop_statements():
     assert not offenders, f"DROP found in schema/create: {offenders}"
 
 
-def test_the_drop_script_reverses_the_create_order():
+@pytest.mark.parametrize("revision", sorted(MANIFESTS))
+def test_the_drop_script_reverses_the_create_order(revision):
     """Dropping in creation order fails on the first foreign key."""
-    created = [Path(name).stem for name in _manifest_names()]
-    drop_sql = (SCHEMA_DIR / "drop" / "drop_tables.sql").read_text()
+    manifest, drop_script = MANIFESTS[revision]
+    created = [Path(name).stem for name in _manifest_names(manifest)]
+    drop_sql = drop_script.read_text()
     dropped = re.findall(
         r"^\s*DROP\s+(?:TABLE|TYPE)\s+IF\s+EXISTS\s+(\w+)",
         drop_sql,
@@ -185,9 +212,9 @@ def test_no_create_file_uses_postgres_only_string_functions():
 
 def test_the_revision_refuses_meta_commands_it_cannot_run():
     """A psql meta-command silently skipped is DDL silently not run."""
-    revision = (MIGRATIONS_DIR / "versions" / "0001_initial_schema.py").read_text()
-    assert "_strip_meta_commands" in revision
-    assert "is not supported" in revision, (
+    runner = (MIGRATIONS_DIR / "sqlrunner.py").read_text()
+    assert "strip_meta_commands" in runner
+    assert "is not supported" in runner, (
         "the runner must raise on an unknown meta-command, not skip it"
     )
 
@@ -270,3 +297,45 @@ def test_the_enum_is_created_idempotently():
     assert "RAISE EXCEPTION" in sql, (
         "an existing type with different labels must stop the migration, not be ignored"
     )
+
+
+# --- revision 0002's precondition --------------------------------------------
+
+
+def _revision_0002():
+    """Import the revision module the way alembic does, by path.
+
+    `prepend_sys_path` puts `db/migrations` on the path for alembic itself; this test
+    imports one revision directly, so it does the same thing explicitly.
+    """
+    import importlib.util
+    import sys
+
+    sys.path.insert(0, str(MIGRATIONS_DIR))
+    try:
+        path = MIGRATIONS_DIR / "versions" / "0002_content_and_crawl_queue.py"
+        spec = importlib.util.spec_from_file_location("revision_0002", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.remove(str(MIGRATIONS_DIR))
+
+
+def test_the_missing_extension_message_names_the_command_that_fixes_it():
+    """Whichever branch it takes, it must end somewhere actionable.
+
+    pgvector cannot be installed by the role that runs migrations, so this message is the
+    entire remedy: a reader who gets `type "vector" does not exist` three statements later
+    has to work out the privilege rule for themselves.
+    """
+    module = _revision_0002()
+
+    installed_elsewhere = module.pgvector_message("0.8.5")
+    assert "0.8.5" in installed_elsewhere
+    assert "make db-bootstrap" in installed_elsewhere
+    assert "superuser" in installed_elsewhere
+
+    not_there_at_all = module.pgvector_message(None)
+    assert "pgvector/pgvector" in not_there_at_all, "say which image ships it"
+    assert "db-bootstrap" in not_there_at_all

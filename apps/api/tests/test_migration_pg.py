@@ -24,7 +24,14 @@ pytestmark = pytest.mark.postgres
 TABLES = [
     "app_user", "user_identity", "bookmark", "user_bookmark",
     "tag", "tag_alias", "bookmark_tag",
+    "bookmark_content", "crawl_job",
 ]
+
+# Columns the SQL files define and the models deliberately do not. `tsv` is a Postgres
+# generated tsvector: there is no SQLite equivalent, nothing in the ORM reads it, and
+# search will be raw SQL over the GIN index. Listing it here keeps the diff strict about
+# everything else -- an unlisted difference is still a failure.
+SQL_ONLY = {("bookmark_content", "tsv")}
 
 
 def alembic_config(url: str):
@@ -281,6 +288,10 @@ def _diff(from_sql, from_models) -> list[str]:
         a = {c["name"]: c for c in from_sql.get_columns(table)}
         b = {c["name"]: c for c in from_models.get_columns(table)}
         for column in sorted(a.keys() | b.keys()):
+            if (table, column) in SQL_ONLY:
+                if column not in a:
+                    out.append(f"{table}.{column}: listed as SQL-only but absent from the SQL")
+                continue
             if column not in a:
                 out.append(f"{table}.{column}: only in the models")
                 continue
@@ -369,31 +380,36 @@ def test_identity_columns_refuse_an_explicit_id(migrated):
 def test_the_migration_survives_a_leftover_enum_type(pg_url, migrated):
     """Re-running after a partial teardown must work.
 
-    The failure this covers: tables dropped by hand, `tag_source` left behind because
+    The failure this covers: tables dropped by hand, the enum types left behind because
     nothing drops a type implicitly, and every subsequent `alembic upgrade head` dying on
-    `type "tag_source" already exists`.
+    `type "tag_source" already exists`. Both revisions' types are left behind here, since
+    0002 added `job_state` with the same hazard.
     """
     from alembic import command
 
     session, engine = migrated
 
-    # Leave the database in exactly that state: schema gone, type still there.
-    drop_sql = (
-        ALEMBIC_INI.parent / "schema" / "drop" / "drop_tables.sql"
-    ).read_text()
-    statements = "\n".join(
-        line for line in drop_sql.splitlines() if not line.lstrip().startswith("\\")
-    ).replace("DROP TYPE IF EXISTS tag_source;", "")
-    session.execute(text(statements))
+    # Leave the database in exactly that state: tables gone, types still there. In
+    # revision order reversed -- 0002's tables reference 0001's, so dropping 0001's first
+    # fails on the foreign key rather than testing anything.
+    drop_dir = ALEMBIC_INI.parent / "schema" / "drop"
+    for script in ("drop_content.sql", "drop_tables.sql"):
+        sql = (drop_dir / script).read_text()
+        statements = "\n".join(
+            line for line in sql.splitlines() if not line.lstrip().startswith("\\")
+        )
+        for keep in ("DROP TYPE IF EXISTS tag_source;", "DROP TYPE IF EXISTS job_state;"):
+            statements = statements.replace(keep, "")
+        session.execute(text(statements))
     session.execute(text("DROP TABLE IF EXISTS alembic_version"))
     session.commit()
 
     leftover = session.execute(
-        text("SELECT count(*) FROM pg_type WHERE typname = 'tag_source'")
+        text("SELECT count(*) FROM pg_type WHERE typname IN ('tag_source', 'job_state')")
     ).scalar_one()
-    assert leftover == 1, "the fixture for this test did not leave the type behind"
+    assert leftover == 2, "the fixture for this test did not leave the types behind"
 
     command.upgrade(alembic_config(pg_url), "head")
 
     present = set(inspect(engine).get_table_names())
-    assert set(TABLES) <= present, "upgrade must succeed over a leftover type"
+    assert set(TABLES) <= present, "upgrade must succeed over leftover types"

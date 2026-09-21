@@ -10,6 +10,11 @@ DB_USER      := $(shell grep -s DB_USER=       .env | sed 's/.*=//')
 # scrollback, and any CI log. The recipes below read it in the shell instead, where make
 # never sees it.
 DB_NAME      := $(shell grep -s DB_NAME=       .env | sed 's/.*=//')
+# The role that installs extensions. Not DB_USER: pgvector is not a trusted extension, so
+# CREATE EXTENSION needs a superuser, and the application role is deliberately not one.
+# Override on the command line if your superuser is named something else:
+#     make db-bootstrap PG_SUPERUSER=admin
+PG_SUPERUSER ?= postgres
 
 # All Python work goes through uv: it resolves the interpreter, keeps .venv in step
 # with uv.lock, and syncs on demand -- so `make test` works from a clean checkout
@@ -46,7 +51,7 @@ install:
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
         api-lint api-openapi test test-api test-scripts test-ext test-pg \
         migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
-        db-connect db-doctor schema-drop
+        db-connect db-doctor db-bootstrap schema-drop
 
 
 # --- the release gate -------------------------------------------------------
@@ -149,6 +154,12 @@ schema-drop:  ## DESTRUCTIVE. Drop every schema object: make schema-drop CONFIRM
 	@echo
 	@echo "Dropped, including alembic_version -- without that, alembic would still think"
 	@echo "0001 was applied and 'make migrate' would be a silent no-op. Run it now."
+
+db-bootstrap:  ## Install the pgvector extension (needs a superuser, once per database)
+	@echo "Running db/schema/bootstrap.sql as the superuser role."
+	@echo "pgvector is not a trusted extension, so the application role cannot do this."
+	psql "postgresql://$(PG_SUPERUSER)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)" \
+	  -v ON_ERROR_STOP=1 -f db/schema/bootstrap.sql
 
 db-doctor:  ## Show which database the settings actually reach, and what is in it
 	cd apps/api && uv run python -m bookmarks_api.doctor

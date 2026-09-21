@@ -14,6 +14,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -33,6 +34,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
+
+# The embedding column, and its stand-in on SQLite. The default suite has no pgvector and
+# does not need one: nothing in the API reads an embedding yet, and when search arrives it
+# will be Postgres-only anyway. Text keeps the table creatable so every other column is
+# still exercised on SQLite.
+Embedding = Vector(384).with_variant(Text(), "sqlite")
 
 
 class TagSource(enum.Enum):
@@ -242,3 +249,76 @@ class BookmarkTag(Base):
 
     user_bookmark: Mapped[UserBookmark] = relationship(back_populates="tag_links")
     tag: Mapped[Tag] = relationship(lazy="joined")
+
+
+# --- what the crawler produced, and the queue that feeds it ------------------
+
+
+class BookmarkContent(Base):
+    """Extracted text and its embedding, keyed by the URL rather than by the save.
+
+    Ten people saving the same page pay for one fetch and one embedding; that is ADR 0001
+    earning its keep. A missing row is not "empty page": it means no successful fetch has
+    produced anything yet, and `crawl_job` is where the reason lives.
+
+    `tsv` is absent on purpose. It is a Postgres generated column with no SQLite
+    equivalent, nothing in the ORM reads it, and search will be raw SQL over the GIN
+    index; `db/schema/create/bookmark_content.sql` remains its single definition, and the
+    schema-diff test lists it as the one deliberate difference.
+    """
+
+    __tablename__ = "bookmark_content"
+
+    bookmark_id: Mapped[int] = mapped_column(
+        BigId, ForeignKey("bookmark.id", ondelete="CASCADE"), primary_key=True
+    )
+    text_: Mapped[str | None] = mapped_column("text", Text)
+    embedding: Mapped[list[float] | None] = mapped_column(Embedding)
+    # Which model produced `embedding`. A re-embed is then `WHERE model <> :current`
+    # rather than a guess about what is in the column.
+    model: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = _now()
+
+    def __repr__(self) -> str:
+        return f"<BookmarkContent bookmark={self.bookmark_id} model={self.model!r}>"
+
+
+class JobState(enum.Enum):
+    READY = "ready"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class CrawlJob(Base):
+    """One outstanding crawl per URL.
+
+    `bookmark_id` is the primary key rather than a job id, so that invariant is enforced
+    by the database instead of remembered by the enqueue code. The row is written in the
+    same transaction as the bookmark, which is what makes "saved but never queued"
+    unreachable rather than merely unlikely.
+    """
+
+    __tablename__ = "crawl_job"
+
+    bookmark_id: Mapped[int] = mapped_column(
+        BigId, ForeignKey("bookmark.id", ondelete="CASCADE"), primary_key=True
+    )
+    state: Mapped[JobState] = mapped_column(
+        Enum(JobState, name="job_state", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+        default=JobState.READY,
+        server_default=text("'ready'"),
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    # Backoff as a timestamp, not a sleep: it survives a restart, and a second worker
+    # honours it too.
+    next_attempt_at: Mapped[datetime] = _now()
+    last_error: Mapped[str | None] = mapped_column(Text)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _now()
+
+    def __repr__(self) -> str:
+        return f"<CrawlJob bookmark={self.bookmark_id} {self.state.value} attempts={self.attempts}>"

@@ -15,6 +15,7 @@ dependencies = [
     "selectolax>=0.3.21",
     "alembic>=1.13",
     "tldextract>=5.3",   # top_domain_under_public_suffix; registered_domain deprecated
+    "pgvector>=0.5.0",
 ]
 
 # PEP 735 dependency group rather than an optional extra: these are development tools,

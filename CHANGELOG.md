@@ -181,6 +181,20 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Added
 
+- **M3, first half: content and the crawl queue** (revision `0002`). `bookmark_content`
+  holds extracted text, a generated `tsvector` and a 384-dimension embedding, keyed by
+  URL so ten people saving a page pay for one fetch. `crawl_job` is the queue: keyed by
+  `bookmark_id` so one outstanding crawl per URL is a database invariant, written in the
+  same transaction as the bookmark so "saved but never queued" is unreachable. The worker
+  that drains it is not here yet. [ADR 0009](doc/decisions/0009-crawl-queue-in-postgres.md)
+- `make db-bootstrap` installs the `vector` extension as a superuser. pgvector is not a
+  trusted extension, so the role that runs migrations cannot install it; revision `0002`
+  checks for it and names this command rather than failing later on a missing type.
+- `db/migrations/sqlrunner.py` — the manifest runner, shared by every revision instead of
+  copied into each. Each revision has its own manifest: `create_tables.sql` is `0001`,
+  `create_content.sql` is `0002`, and a test insists every create file is named by
+  exactly one of them.
+
 - **Bearer auth is declared as a security scheme**, so `/api/v2/docs` has an Authorize
   dialog and every protected operation shows a padlock. Reading the `Authorization`
   header by hand left FastAPI nothing to put in the OpenAPI document, and the docs page

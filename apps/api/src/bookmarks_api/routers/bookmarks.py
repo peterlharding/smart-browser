@@ -19,7 +19,16 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..deps import CurrentUser, ViewingUser
-from ..models import AppUser, Bookmark, BookmarkTag, Tag, TagAlias, TagSource, UserBookmark
+from ..models import (
+    AppUser,
+    Bookmark,
+    BookmarkTag,
+    CrawlJob,
+    Tag,
+    TagAlias,
+    TagSource,
+    UserBookmark,
+)
 from ..schemas import BookmarkCreate, BookmarkOut, BookmarkPage, BookmarkPatch, TagsIn
 from ..urlnorm import normalise, site_of, url_hash
 
@@ -92,6 +101,32 @@ def _upsert_bookmark(db: Session, url: str) -> Bookmark:
         .on_conflict_do_nothing(index_elements=[Bookmark.url_hash])
     )
     return db.execute(select(Bookmark).where(Bookmark.url_hash == digest)).scalar_one()
+
+
+def _enqueue_crawl(db: Session, bookmark: Bookmark) -> None:
+    """Record that this URL wants fetching, in the caller's transaction.
+
+    Deliberately not a background task, a thread, or a fetch: this function only writes a
+    row, and it writes it in the transaction that saves the bookmark. Both commit or
+    neither does, so "saved but never queued" is not a state this system can reach --
+    which is the entire reason the queue is a table rather than something in the process.
+    See ADR 0009.
+
+    Nothing is queued for a page already fetched. `POST /bookmarks` is an upsert and
+    usually finds an existing row, so enqueueing unconditionally would re-crawl the web
+    every time you re-saved anything.
+    """
+    if bookmark.fetched_at is not None:
+        return
+
+    db.execute(
+        _insert(db)(CrawlJob)
+        .values(bookmark_id=bookmark.id)
+        # Already queued is not an error, and a job in flight must not be disturbed: a
+        # re-save while the worker holds the row would otherwise reset its attempt count
+        # and hand a second worker the same page.
+        .on_conflict_do_nothing(index_elements=[CrawlJob.bookmark_id])
+    )
 
 
 def _resolve_tag(db: Session, raw: str) -> Tag:
@@ -172,6 +207,8 @@ def save_bookmark(
 
     if payload.tags:
         _attach_tags(db, save, payload.tags)
+
+    _enqueue_crawl(db, bookmark)
 
     db.commit()
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK

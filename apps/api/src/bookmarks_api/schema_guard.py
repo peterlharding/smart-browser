@@ -17,7 +17,7 @@ from sqlalchemy.engine import Engine
 # The Alembic revision this code requires. Bump it when adding a migration; the test
 # `test_required_revision_matches_alembic_head` fails until you do, so the two cannot
 # drift silently.
-REQUIRED_SCHEMA_REVISION = "0001"
+REQUIRED_SCHEMA_REVISION = "0002"
 
 
 class SchemaMismatch(RuntimeError):

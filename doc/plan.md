@@ -91,10 +91,16 @@ bulk-imports; see ADR 0007.
 
 ## M3 — next
 
-Two designs for where the crawler runs — in the API on save, or a Postgres queue drained
-by a worker — are sketched against the schema in
-[`m3-crawler-options.md`](m3-crawler-options.md), with the recommendation and the one
-measurement that would overturn it. Undecided until an ADR says otherwise.
+**Decided:** a queue in Postgres, drained by a worker
+([ADR 0009](decisions/0009-crawl-queue-in-postgres.md)); the options and what each costs
+are in [`m3-crawler-options.md`](m3-crawler-options.md).
+
+Done so far — revision `0002`: `bookmark_content` (text, generated `tsvector`, 384d
+embedding), `job_state`, `crawl_job`, and the enqueue inside the save transaction.
+`make db-bootstrap` installs pgvector, which a migration cannot do for itself.
+
+Next: the worker — claim, fetch, extract, back off — then embeddings as a second pass
+over `bookmark_content WHERE embedding IS NULL`.
 
 **Unblocked — 2026-09-21.** pgvector 0.8.5 is available in the running container, so no
 container swap. It is not a trusted extension, so installing it needs `postgres`, not
@@ -150,6 +156,7 @@ ADR 0002 chose a global vocabulary. Adding a per-user private namespace later is
 | 2026-09-20 | Clean schema; no v1 compatibility; `UNIQUE (url_hash)` enforces no-duplicates | [ADR 0006](decisions/0006-clean-schema.md) |
 | 2026-09-20 | Reads require a token: per-user data has no anonymous read | [ADR 0006](decisions/0006-clean-schema.md) |
 | 2026-09-20 | ~~One version for the monorepo~~ | [ADR 0004](decisions/0004-single-version-monorepo.md) — superseded |
+| 2026-09-21 | Crawl queue is a table in Postgres, drained by a worker | [ADR 0009](decisions/0009-crawl-queue-in-postgres.md) |
 | 2026-09-21 | API path is `/api/v1`; contract version 1 | [ADR 0008](decisions/0008-api-path-v1.md) |
 | 2026-09-21 | Local-only deployment for now; M1 deferred behind M3 | this plan, Milestones |
 | 2026-09-21 | First end-to-end save: extension → API → Postgres, verified in Swagger | this plan, M0 |
