@@ -9,6 +9,15 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Fixed
+
+- **0.2.0 was tagged with an OpenAPI contract that said 0.1.0.** The committed
+  `packages/shared-types/openapi.json` embeds the release version, `make version-set`
+  never regenerated it, and only CI compared it with what the app serves, so the release
+  commit went red after the tag was pushed. `version-set` now regenerates it, and a new
+  `make openapi-check`, part of `make check` and what CI runs, fails when it is stale.
+  0.2.0 stays tagged and unpublished; 0.2.1 is the release.
+
 ## [0.2.0] - 2026-09-21
 
 See [release_notes/v0.2.0.md](release_notes/v0.2.0.md) for details.

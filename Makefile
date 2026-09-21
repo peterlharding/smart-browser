@@ -44,7 +44,7 @@ help:  ## Show this help
 # -----------------------------------------------------------------------------
 
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
-        api-lint api-openapi test test-api test-scripts test-ext test-pg \
+        api-lint api-openapi openapi-check test test-api test-scripts test-ext test-pg \
         migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
         db-connect db-doctor db-bootstrap schema-drop rehash-urls \
         worker crawl-backfill crawl-status
@@ -52,7 +52,7 @@ help:  ## Show this help
 
 # --- the release gate -------------------------------------------------------
 
-check: version-check lint-md api-lint test  ## Everything the release checklist requires
+check: version-check openapi-check lint-md api-lint test  ## Everything the release checklist requires
 	@echo
 	@echo "All checks passed."
 
@@ -71,6 +71,7 @@ version-set:  ## Set the version everywhere: make version-set VERSION=0.2.0
 	npm version $(VERSION) --no-git-tag-version --allow-same-version >/dev/null
 	@python3 scripts/version.py set $(VERSION)
 	$(UV) lock --quiet
+	@$(MAKE) --no-print-directory api-openapi
 
 lint-md:  ## Lint every markdown file we wrote
 	npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#**/node_modules" "#**/.venv" "#**/venv" "#**/dist" "#**/.git"
@@ -119,13 +120,22 @@ api-dev:  ## Run the API with reload on :8000
 api-lint:  ## Lint and type-check the API
 	cd apps/api && uv run ruff check . && uv run mypy src
 
+# The contract as the app describes it now. It embeds the release version, so a bump makes
+# the committed file stale: 0.2.0 was tagged with a contract that said 0.1.0 because only
+# CI compared them. version-set now regenerates it, and `make check` compares it.
+OPENAPI      := packages/shared-types/openapi.json
+OPENAPI_DUMP := cd apps/api && uv run python -c "import json, sys; \
+	from bookmarks_api.main import app; \
+	sys.stdout.write(json.dumps(app.openapi(), indent=2) + chr(10))"
+
 api-openapi:  ## Regenerate the committed OpenAPI contract
-	cd apps/api && uv run python -c \
-	  "import json, pathlib; from bookmarks_api.main import app; \
-	   pathlib.Path('../../packages/shared-types/openapi.json').write_text( \
-	     json.dumps(app.openapi(), indent=2) + chr(10))"
-	@echo "wrote packages/shared-types/openapi.json"
-	@git diff --stat packages/shared-types/openapi.json
+	@$(OPENAPI_DUMP) > $(CURDIR)/$(OPENAPI)
+	@echo "wrote $(OPENAPI)"
+	@git diff --stat $(OPENAPI)
+
+openapi-check:  ## Fail if the committed OpenAPI contract differs from what the app serves
+	@$(OPENAPI_DUMP) | diff -q - $(CURDIR)/$(OPENAPI) >/dev/null || { \
+	  echo "$(OPENAPI) is stale: run 'make api-openapi' and commit it"; exit 1; }
 
 # --- the crawl worker (ADR 0012) --------------------------------------------
 

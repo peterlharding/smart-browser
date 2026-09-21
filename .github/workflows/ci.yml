@@ -57,10 +57,7 @@ jobs:
           "
 
       - name: OpenAPI contract is up to date
-        run: |
-          make api-openapi
-          git diff --exit-code packages/shared-types/openapi.json \
-            || { echo "::error::openapi.json is stale — run 'make api-openapi' and commit"; exit 1; }
+        run: make openapi-check
 
   postgres:
     runs-on: ubuntu-latest

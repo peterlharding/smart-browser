@@ -56,8 +56,8 @@ release cannot be cut with an API that reports the wrong version.
    git diff   # expect only version fields to change
    ```
 
-   That wraps `npm version <version> --no-git-tag-version` and `scripts/version.py set`, then relocks `apps/api/uv.lock`, which records the API package's own version.
-   Expect that lockfile's version line in the diff too; `make version-check` fails if it is left behind.
+   That wraps `npm version <version> --no-git-tag-version` and `scripts/version.py set`, then relocks `apps/api/uv.lock` and regenerates `packages/shared-types/openapi.json`, both of which record the version.
+   Expect their version lines in the diff too; `make check` fails if either is left behind.
 
 3. **Cut the changelog.** In `CHANGELOG.md`:
    - Move the items under `## [Unreleased]` into a new `## [<version>] - YYYY-MM-DD` section (today's date).
@@ -71,7 +71,7 @@ release cannot be cut with an API that reports the wrong version.
 5. **Run every check** and confirm there are no warnings and no failures:
 
    ```sh
-   make check   # version sync, markdown lint, ruff, mypy, pytest
+   make check   # version sync, lockfiles, OpenAPI contract, markdown lint, ruff, mypy, tests
    ```
 
    `make check` runs everything through `uv`, which syncs the environment from `uv.lock` first — so a stale lockfile shows up here rather than in CI.
