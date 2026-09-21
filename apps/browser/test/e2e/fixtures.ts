@@ -5,6 +5,8 @@
 
 import { _electron, test as base, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +22,8 @@ const LINUX_SWITCHES = ['-r', join(APP, 'test/e2e/linux-secret-store.cjs'), '--d
 export const API = () => process.env.E2E_API_URL!;
 export const TOKEN = () => process.env.E2E_API_TOKEN!;
 export const SITE = (path: string) => `${process.env.E2E_SITE!}${path}`;
+/** The same site under another host name, for "More from this site". */
+export const OTHER_SITE = (path: string) => SITE(path).replace('127.0.0.1', 'localhost');
 
 export class BrowserApp {
   /** Everything the main process printed, attached to a failing test. */
@@ -72,11 +76,15 @@ export class BrowserApp {
     return page;
   }
 
-  /** Views appear after launch, and a view's first URL is about:blank until it loads. */
+  /**
+   * Views appear after launch, and a view's first URL is about:blank until it loads. A page
+   * that sets a fragment as it loads is still the page asked for.
+   */
   async waitForPage(url: string, timeout = 10_000): Promise<Page> {
     const deadline = Date.now() + timeout;
+    const same = (p: Page) => p.url() === url || (!url.includes('#') && p.url().split('#')[0] === url);
     for (;;) {
-      const found = this.app.windows().find((p) => p.url() === url);
+      const found = this.app.windows().find((p) => p.url() === url) ?? this.app.windows().find(same);
       if (found) return found;
       if (Date.now() > deadline) return this.page(url); // throws, listing what there is
       await new Promise((r) => setTimeout(r, 50));
@@ -127,21 +135,30 @@ export class BrowserApp {
     });
   }
 
-  /**
-   * Count the lookups the app sends from now on: the API client calls the main process's
-   * global fetch, so wrapping it sees every request, as the API's access log would.
-   */
-  async countLookups(): Promise<() => Promise<number>> {
-    await this.app.evaluate(() => {
-      const g = globalThis as unknown as { fetch: typeof fetch; __lookups?: number; __realFetch?: typeof fetch };
-      g.__realFetch ??= g.fetch;
-      g.__lookups = 0;
-      g.fetch = (input, init) => {
-        if (String(input).includes('/bookmarks/lookup')) g.__lookups! += 1;
-        return g.__realFetch!(input, init);
+  /** The history page, once a tab shows it. */
+  async historyPage(): Promise<Page> {
+    await expect
+      .poll(() => this.app.windows().some((p) => p.url().startsWith('smart://history/')), {
+        message: 'no tab shows the history page',
+      })
+      .toBe(true);
+    const page = this.app.windows().find((p) => p.url().startsWith('smart://history/'))!;
+    await page.waitForSelector('.page');
+    return page;
+  }
+
+  /** A menu item as the menu shows it now: it is rebuilt as history changes. */
+  async menuItem(id: string): Promise<{ label: string; enabled: boolean; icon: boolean; toolTip: string } | null> {
+    return this.app.evaluate(({ Menu }, itemId) => {
+      const item = Menu.getApplicationMenu()?.getMenuItemById(itemId);
+      if (!item) return null;
+      return {
+        label: item.label,
+        enabled: item.enabled,
+        icon: Boolean(item.icon && typeof item.icon !== 'string' && !item.icon.isEmpty()),
+        toolTip: item.toolTip,
       };
-    });
-    return () => this.app.evaluate(() => (globalThis as unknown as { __lookups: number }).__lookups);
+    }, id);
   }
 
   async configure(apiUrl = API(), token = TOKEN()): Promise<void> {
@@ -190,6 +207,47 @@ export class BrowserApp {
     await this.close().catch(() => undefined);
     rmSync(this.profile, { recursive: true, force: true });
   }
+}
+
+/**
+ * A stand-in for the API's access log: a proxy in front of the real API that records each
+ * request, so a test can say what the browser sent, including at launch, before any code
+ * in the test could have wrapped anything in the app.
+ */
+export async function recordApi(): Promise<{ url: string; requests: string[]; close(): Promise<void> }> {
+  const requests: string[] = [];
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => chunks.push(chunk));
+    request.on('end', () => {
+      const path = new URL(request.url ?? '/', 'http://api').pathname;
+      requests.push(`${request.method} ${path}`);
+      const headers = new Headers();
+      for (const name of ['authorization', 'content-type', 'accept']) {
+        const value = request.headers[name];
+        if (typeof value === 'string') headers.set(name, value);
+      }
+      const body = chunks.length ? Buffer.concat(chunks) : undefined;
+      void fetch(`${API()}${request.url}`, { method: request.method, headers, body }).then(
+        async (answer) => {
+          response.writeHead(answer.status, { 'Content-Type': answer.headers.get('content-type') ?? 'text/plain' });
+          response.end(Buffer.from(await answer.arrayBuffer()));
+        },
+        () => response.writeHead(502).end(),
+      );
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    requests,
+    close: () =>
+      new Promise((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+  };
 }
 
 // `smart`, not `browser`: Playwright already has a fixture by that name.

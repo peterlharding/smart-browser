@@ -25,7 +25,11 @@ const targets = [
   { ...node, entryPoints: { index: 'src/main/index.ts' }, outdir: 'out/main', outExtension: { '.js': '.cjs' } },
   {
     ...node,
-    entryPoints: { chrome: 'src/preload/chrome.ts', overlay: 'src/preload/overlay.ts' },
+    entryPoints: {
+      chrome: 'src/preload/chrome.ts',
+      overlay: 'src/preload/overlay.ts',
+      history: 'src/preload/history.ts',
+    },
     outdir: 'out/preload',
     outExtension: { '.js': '.cjs' },
   },

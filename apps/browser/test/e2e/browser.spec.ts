@@ -5,7 +5,7 @@
  */
 
 import type { Bookmark } from '../../src/shared/ipc';
-import { API, BrowserApp, SITE, TOKEN, expect, expectFocused, test } from './fixtures';
+import { API, BrowserApp, SITE, TOKEN, expect, expectFocused, recordApi, test } from './fixtures';
 
 async function lookup(url: string): Promise<Bookmark> {
   const response = await fetch(`${API()}/api/v1/bookmarks/lookup?url=${encodeURIComponent(url)}`, {
@@ -36,6 +36,14 @@ test('typing an address loads the page, with its title and favicon', async ({ sm
 test('a page with no title is named by its host and path, as Chrome names it', async ({ smart }) => {
   await smart.go(SITE('/untitled.html'));
   await expect(smart.chrome().locator('.tab .title')).toHaveText(SITE('/untitled.html').replace(/^http:\/\//, ''));
+});
+
+test('a page keeps its favicon when it is the same as the last page’s', async ({ smart }) => {
+  // Chromium announces a page's icons only when they change, so the second page announces
+  // nothing, and once lost its icon for it.
+  await smart.go(SITE('/article.html'));
+  await smart.go(SITE('/second.html'));
+  await expect(smart.chrome().locator('.tab .favicon img')).toHaveAttribute('src', /^data:image\/svg\+xml;base64,/);
 });
 
 test('an unconfigured browser sends the save button to settings', async ({ smart }) => {
@@ -136,24 +144,66 @@ test('quick save keeps the page without asking for tags', async ({ smart }) => {
   expect((await lookup(url)).tags).toEqual([]);
 });
 
-test('a page is looked up once, not on every step of its loading', async ({ smart }) => {
+test('browsing sends nothing to the API; acting on a page does', async () => {
+  const api = await recordApi();
+  const first = await BrowserApp.launch();
+  await first.configure(api.url); // saving settings asks nothing either
+  await first.close();
+
+  const smart = await BrowserApp.launch(first.profile); // a launch, configured
+  try {
+    await smart.go(SITE('/article.html?traffic')); // a page no other test saves
+    await smart.menu('new-tab');
+    await smart.go(SITE('/stages.html'));
+    await smart.chrome().waitForTimeout(300); // let its stages finish
+    await smart.menu('tab-1');
+    await smart.menu('reload');
+    const save = smart.chrome().locator('.save');
+    await expect(save).toHaveAttribute('title', 'Save this page with tags (⌘⇧B)');
+    expect(api.requests).toEqual([]);
+
+    // The first action asks for the contract, then what it needs.
+    await smart.menu('save-sheet');
+    const sheet = await smart.overlay();
+    await expect(sheet.getByText('Not saved yet')).toBeVisible();
+    expect([...api.requests].sort()).toEqual(['GET /api/v1/bookmarks/lookup', 'GET /api/v1/health', 'GET /api/v1/tags']);
+
+    // The contract is known for the session: the next action asks only what it needs.
+    await smart.menu('close-tab'); // closes the card, not the tab
+    await smart.menu('save-sheet');
+    await expect((await smart.overlay()).getByText('Not saved yet')).toBeVisible();
+    expect(api.requests.filter((r) => r.endsWith('/health'))).toHaveLength(1);
+    expect(api.requests).toHaveLength(5);
+  } finally {
+    await smart.dispose();
+    await api.close();
+  }
+});
+
+test('the save button knows what this browser saved, and learns the rest from the sheet', async ({ smart }) => {
   await smart.configure();
-  const lookups = await smart.countLookups();
-  await smart.go(SITE('/stages.html'));
+  // Saved from elsewhere, the extension say: the browser has not been told.
+  const url = SITE('/article.html?saved=elsewhere');
+  const response = await fetch(`${API()}/api/v1/bookmarks`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${TOKEN()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, tags: ['elsewhere'], saved_from: 'extension' }),
+  });
+  expect(response.status).toBe(201);
+
+  await smart.go(url);
   const save = smart.chrome().locator('.save');
   await expect(save).toHaveAttribute('title', 'Save this page with tags (⌘⇧B)');
-  await (await smart.tab(SITE('/stages.html'))).waitForTimeout(300); // let the stages finish
-  expect(await lookups()).toBe(1);
 
-  // Switching away and back asks nothing new: the answer is a second old.
+  await smart.menu('save-sheet');
+  await expect((await smart.overlay()).getByText('Saved', { exact: true })).toBeVisible();
+  await smart.menu('close-tab');
+  await expect(save).toHaveAttribute('title', 'Saved with elsewhere (⌘⇧B)');
+
+  // Known now, in any tab, without asking again.
   await smart.menu('new-tab');
-  await smart.menu('tab-1');
-  await expect(save).toHaveAttribute('title', 'Save this page with tags (⌘⇧B)');
-  expect(await lookups()).toBe(1);
-
-  // Reloading is asking again.
-  await smart.menu('reload');
-  await expect.poll(lookups).toBe(2);
+  await smart.go(url);
+  await expect(save).toHaveAttribute('title', 'Saved with elsewhere (⌘⇧B)');
 });
 
 test('a link that opens a window opens a tab beside its page instead', async ({ smart }) => {
@@ -238,6 +288,8 @@ test('pages cannot reach the browser, and asking for a permission is refused', a
   const permission = await page.evaluate(async () => (await navigator.permissions.query({ name: 'geolocation' })).state);
   expect(permission).toBe('denied');
   // smart:// is registered for the browser's own UI only; a page cannot load it.
-  const loaded = await page.evaluate(() => fetch('smart://ui/chrome.html').then(() => true, () => false));
-  expect(loaded).toBe(false);
+  for (const url of ['smart://ui/chrome.html', 'smart://history/']) {
+    const loaded = await page.evaluate((u) => fetch(u).then(() => true, () => false), url);
+    expect(loaded, url).toBe(false);
+  }
 });

@@ -2,6 +2,8 @@
 
 The Electron shell ([ADR 0015](../../doc/decisions/0015-electron-shell.md)).
 It browses like Chrome and saves like the extension: `⌘⇧B` opens the save sheet over the page, `⌘⇧S` saves without asking.
+Where you have been is kept on this machine, in `history.db` in the profile, behind the History menu and `⌘Y` ([ADR 0016](../../doc/decisions/0016-local-history-backend-on-action.md)).
+The API hears only about pages you act on.
 
 ## Running it
 
@@ -22,11 +24,13 @@ The token is kept in the Keychain through Electron's `safeStorage`, and never sh
 ## How it is put together
 
 ```text
-src/main/      the main process: the window and its views, tabs, IPC, the API client, settings
+src/main/      the main process: the window and its views, tabs, IPC, the API client, settings,
+               history (history.ts, SQLite through node:sqlite) and the menu built from it
 src/preload/   one bridge per kind of view, one function per request, never ipcRenderer
-src/ui/        Svelte: Chrome.svelte (tab strip, toolbar), Overlay.svelte (save sheet, settings)
+src/ui/        Svelte: Chrome.svelte (tab strip, toolbar), Overlay.svelte (save sheet, settings),
+               History.svelte (the history page, smart://history/)
 src/shared/    ipc.ts, the typed channel surface; api-types.ts, generated from the API contract
-test/unit/     Vitest: the omnibox, the API client, settings and session
+test/unit/     Vitest: the omnibox, the API client, settings, URLs and history
 test/e2e/      Playwright: the built app against the real API and a local site
 ```
 
@@ -35,6 +39,7 @@ A page's view is drawn over the window's own content, which is why the save shee
 
 The API client runs in the main process only, so the token never reaches a renderer.
 The browser's own UI is served from `smart://ui/`, with a CSP that allows no network access; favicons reach it as `data:` URLs fetched by the main process.
+The history page is a tab showing `smart://history/`, from the same files in the same session, with a bridge that offers history and nothing else.
 Tag parsing and autocomplete are the extension's own `src/lib/tags.js`, imported rather than copied.
 
 `src/shared/api-types.ts` is generated: `make api-openapi` rewrites it with the contract, and `make check` fails if it is stale.

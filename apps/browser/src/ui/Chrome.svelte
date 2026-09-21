@@ -15,7 +15,7 @@
     activeId: null,
     canGoBack: false,
     canGoForward: false,
-    saved: { kind: 'unknown' },
+    saved: { kind: 'not-web' },
     focusOmnibox: 0,
   });
   let typed = $state('');
@@ -73,7 +73,7 @@
     switch (saved.kind) {
       case 'saved':
         return saved.tags.length ? `Saved with ${saved.tags.join(', ')} (⌘⇧B)` : 'Saved, untagged (⌘⇧B)';
-      case 'unsaved':
+      case 'savable':
         return 'Save this page with tags (⌘⇧B)';
       case 'unconfigured':
         return 'Connect to your bookmarks API in Settings';
@@ -81,8 +81,6 @@
         return saved.reason;
       case 'not-web':
         return 'Only web pages can be saved';
-      default:
-        return 'Checking…';
     }
   }
 

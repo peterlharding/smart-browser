@@ -1,5 +1,5 @@
-// The browser's own UI: the chrome (tab strip and toolbar) and the overlay (save sheet,
-// settings). Loaded from files, with no dev server, so what runs is what was built.
+// The browser's own UI: the chrome (tab strip and toolbar), the overlay (save sheet,
+// settings) and the history page. Loaded from files, with no dev server, so what runs is what was built.
 
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +22,11 @@ export default defineConfig({
     target: 'chrome140',
     sourcemap: true,
     rollupOptions: {
-      input: { chrome: here('src/ui/chrome.html'), overlay: here('src/ui/overlay.html') },
+      input: {
+        chrome: here('src/ui/chrome.html'),
+        overlay: here('src/ui/overlay.html'),
+        history: here('src/ui/history.html'),
+      },
     },
   },
 });

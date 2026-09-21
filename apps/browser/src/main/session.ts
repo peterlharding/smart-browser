@@ -11,8 +11,9 @@ export interface Session {
   active: number;
 }
 
-// Only pages worth reopening: a crashed renderer's error page or an internal URL is not.
-const RESTORABLE = /^(https?|file):/i;
+// Only pages worth reopening: web pages, files and the history page (ADR 0016). A crashed
+// renderer's error page, or the browser's UI files, are not.
+const RESTORABLE = /^(https?:|file:|smart:\/\/history\/)/i;
 
 export function readSession(file: string): Session | null {
   try {

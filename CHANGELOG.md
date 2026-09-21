@@ -9,19 +9,41 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Added
+
+- **Local browsing history in the browser** ([ADR 0016](doc/decisions/0016-local-history-backend-on-action.md)),
+  kept in `history.db` in the profile for 90 days and never sent anywhere.
+  - The History menu has Chrome's items and more: Show Full History (⌘Y), Search History (⌥⌘Y), History for This Site, Reopen Closed Tab (⇧⌘T), Recently Closed, the pages visited last with their favicons, a submenu for each earlier day this week, and Delete Browsing Data (⇧⌘⌫).
+  - The history page, `smart://history/`, is laid out like Chrome's.
+    It shows a card per day and searches titles and addresses.
+    Each row's menu has More from this site and Delete from history, and ticked rows are deleted together after a confirmation.
+    Delete browsing data clears history over a time range, and can also clear cookies and the cache.
+  - A page opened from the history page opens in its tab, and Back returns to history.
+  - The history page's own state is kept in its address, so a restored tab shows it again.
+  - A closed tab reopens where it was, with its back and forward history.
+
 ### Changed
 
-- **The browser asks the API about a page once, not on every step of its loading.** The
-  saved-state indicator looked the page up again on every navigation event and tab
-  switch, and a page that settles in stages raised several in a second: the API's log
-  showed one page looked up four times running. Answers are now kept per page for a
-  minute, a lookup already in flight is shared, and an anchor (`#top`) is the same page,
-  as the API treats it. Saves and tag removals update the kept answer, ⌘R asks again, and
-  new settings forget everything. An end-to-end test counts the requests the app sends.
+- **The browser contacts the API only when you act.** It used to look up every page you
+  loaded and every tab you switched to, to fill the save button. Now nothing is sent while
+  you browse or at launch. The save sheet, a quick save, removing a tag and testing
+  Settings are what talk to the API, and the contract check happens on the first of them.
+  The save button shows what this browser knows: pages saved or looked up here show as
+  saved, and any other page shows a plain "save" button. An end-to-end test puts a
+  recording proxy in front of the API and checks that browsing, switching tabs, reloading
+  and launching send nothing. This replaces the short-lived per-page lookup cache, which
+  never reached a release.
 - **`make api-dev` listens where `.env` says**: `API_HOST` and `API_PORT`, which the
   Makefile already read and `make chk-env` printed, but the target ignored in favour of a
   hard-coded port 8000. It still defaults to `127.0.0.1:8000`, and both are now in
   `.env.example`.
+
+### Fixed
+
+- **A page with the same favicon as the page before it shows it.** Chromium announces a
+  page's icons only when they change, so the second of two pages on one site showed no
+  favicon at all. The suite did not notice because no test went from one page to another
+  and looked at the icon; one does now.
 
 ## [0.4.0] - 2026-09-21
 

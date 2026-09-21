@@ -8,19 +8,30 @@
 
 import { ipcMain } from 'electron';
 
-import { Channels, type SettingsInput } from '../shared/ipc';
+import { Channels, type ClearInput, type ClearRange, type HistoryQuery, type OpenDisposition, type SettingsInput } from '../shared/ipc';
 import type { Browser } from './browser';
 
-type Role = 'chrome' | 'overlay';
+type Role = 'chrome' | 'overlay' | 'history';
+
+const RANGES: readonly ClearRange[] = ['hour', 'day', 'week', 'month', 'all'];
+const DISPOSITIONS: readonly OpenDisposition[] = ['current', 'background', 'foreground'];
 
 export function registerIpc(browsers: () => Iterable<Browser>): void {
-  const handle = <A extends unknown[]>(role: Role, channel: string, handler: (b: Browser, ...args: A) => unknown) =>
+  // The sender is passed first to what needs to know which view asked: the history page
+  // is a tab, and "open here" means its own tab.
+  const handleFrom = <A extends unknown[]>(
+    role: Role,
+    channel: string,
+    handler: (b: Browser, sender: Electron.WebContents, ...args: A) => unknown,
+  ) =>
     ipcMain.handle(channel, (event, ...args) => {
       for (const browser of browsers()) {
-        if (browser.owns(event.sender) === role) return handler(browser, ...(args as A));
+        if (browser.owns(event.sender) === role) return handler(browser, event.sender, ...(args as A));
       }
       return undefined;
     });
+  const handle = <A extends unknown[]>(role: Role, channel: string, handler: (b: Browser, ...args: A) => unknown) =>
+    handleFrom<A>(role, channel, (b, _sender, ...args) => handler(b, ...args));
 
   const c = Channels.chrome;
   handle('chrome', c.newTab, (b) => void b.newTab());
@@ -41,4 +52,22 @@ export function registerIpc(browsers: () => Iterable<Browser>): void {
   handle('overlay', o.removeTag, (b, tag: string) => b.removeTagFromSheet(String(tag)));
   handle('overlay', o.saveSettings, (b, input: SettingsInput) => b.saveSettings(input));
   handle('overlay', o.testConnection, (b, input: SettingsInput) => b.testConnection(input));
+
+  // The history page is a tab: its requests are answered by the window it is in.
+  const h = Channels.history;
+  handle('history', h.query, (b, query: HistoryQuery) => b.queryHistory(query ?? {}));
+  handle('history', h.remove, (b, items: Array<{ pageId: number; day: string }>) =>
+    b.removeHistory(Array.isArray(items) ? items : []),
+  );
+  handle('history', h.clear, (b, input: ClearInput) =>
+    b.clearBrowsingData({
+      range: RANGES.includes(input?.range) ? input.range : 'hour',
+      history: input?.history === true,
+      cookies: input?.cookies === true,
+      cache: input?.cache === true,
+    }),
+  );
+  handleFrom('history', h.open, (b, sender, url: string, how: OpenDisposition) =>
+    b.openFromHistory(sender, String(url), DISPOSITIONS.includes(how) ? how : 'current'),
+  );
 }

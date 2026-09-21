@@ -5,6 +5,7 @@
  */
 
 import type { SearchEngine } from '../shared/ipc';
+import { HISTORY_URL, isInternal } from './urls';
 
 export const SEARCH_ENGINES: Record<SearchEngine, { name: string; template: string }> = {
   duckduckgo: { name: 'DuckDuckGo', template: 'https://duckduckgo.com/?q=%s' },
@@ -13,7 +14,7 @@ export const SEARCH_ENGINES: Record<SearchEngine, { name: string; template: stri
 };
 
 // Schemes a tab may be sent to from the omnibox. Anything else (javascript:, data:, the
-// internal schemes) is searched for rather than opened.
+// browser's UI files) is searched for rather than opened; of smart:, only the history page.
 const OPENABLE = new Set(['http:', 'https:', 'about:', 'file:']);
 
 // A host and optional port with no scheme: example.com, docs.python.org/3/, localhost:8085,
@@ -36,6 +37,7 @@ export function resolveInput(input: string, engine: SearchEngine): string | null
       try {
         const url = new URL(text);
         if (OPENABLE.has(url.protocol)) return url.href;
+        if (isInternal(url.href)) return `${HISTORY_URL}${url.search}`;
       } catch {
         // Not a URL after all: search for it.
       }

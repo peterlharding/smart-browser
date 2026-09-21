@@ -25,13 +25,16 @@ export interface TabState {
   loading: boolean;
 }
 
-/** Whether the active tab's page is in your library. */
+/**
+ * What the toolbar's save button says about the active page. Only what this browser knows:
+ * it never asks the API while you browse (ADR 0016), so `savable` claims nothing about
+ * whether the page is saved, only that it can be.
+ */
 export type SavedState =
-  | { kind: 'unknown' }
   | { kind: 'not-web' }
   | { kind: 'unconfigured' }
   | { kind: 'unavailable'; reason: string }
-  | { kind: 'unsaved' }
+  | { kind: 'savable' }
   | { kind: 'saved'; tags: string[] };
 
 export interface ChromeState {
@@ -74,6 +77,62 @@ export type ConnectionReport =
   | { ok: true; version: string; contract: number; schema: string | null; compatible: boolean }
   | { ok: false; reason: string };
 
+/** One row of the history page: a page's visits on one day, shown at the latest (ADR 0016). */
+export interface HistoryEntry {
+  pageId: number;
+  /** The local day, "2026-09-22". */
+  day: string;
+  url: string;
+  title: string;
+  host: string;
+  /** A 32px PNG data: URL, drawn at 16 points. */
+  favicon: string | null;
+  /** The latest visit that day, in milliseconds. */
+  at: number;
+}
+
+export interface HistoryQuery {
+  /** Words each starting a word of the title or address. */
+  text?: string;
+  /** Only this host: "More from this site". */
+  host?: string;
+  /** Only this day. */
+  day?: string;
+  /** Continue after the row with this `at`. */
+  before?: number;
+  limit?: number;
+}
+
+export interface HistoryResult {
+  entries: HistoryEntry[];
+  more: boolean;
+}
+
+/** What the history page is asked to show: from the menu, or its own address. */
+export interface HistoryView {
+  text?: string;
+  host?: string;
+  day?: string;
+  /** Put the caret in the search box: Search History, ⌥⌘Y. */
+  focus?: 'search';
+  /** Open the Delete browsing data panel. */
+  panel?: 'clear';
+}
+
+export type ClearRange = 'hour' | 'day' | 'week' | 'month' | 'all';
+
+export interface ClearInput {
+  range: ClearRange;
+  history: boolean;
+  /** Cookies and site data, for all time: Electron clears them by origin, not by date. */
+  cookies: boolean;
+  /** Cached images and files, for all time, for the same reason. */
+  cache: boolean;
+}
+
+/** Where a page opened from history goes: this tab, or a new one behind or in front. */
+export type OpenDisposition = 'current' | 'background' | 'foreground';
+
 /** Requests from the chrome: tab strip, toolbar and omnibox. */
 export interface ChromeApi {
   newTab(): Promise<void>;
@@ -102,6 +161,18 @@ export interface OverlayApi {
   onState(listener: (state: OverlayState) => void): () => void;
 }
 
+/** Requests from the history page, a tab of the browser's own (ADR 0016). */
+export interface HistoryApi {
+  query(query: HistoryQuery): Promise<HistoryResult>;
+  remove(items: Array<{ pageId: number; day: string }>): Promise<void>;
+  clear(input: ClearInput): Promise<void>;
+  open(url: string, how: OpenDisposition): Promise<void>;
+  /** History changed: a visit, a deletion. The page asks again. */
+  onChanged(listener: () => void): () => void;
+  /** The menu asked this open page to show something: a search, a site, a day. */
+  onView(listener: (view: HistoryView) => void): () => void;
+}
+
 /** Channel names. Handlers and preloads both use these, so a typo is a compile error. */
 export const Channels = {
   chrome: {
@@ -126,5 +197,13 @@ export const Channels = {
     saveSettings: 'overlay:save-settings',
     testConnection: 'overlay:test-connection',
     state: 'overlay:state',
+  },
+  history: {
+    query: 'history:query',
+    remove: 'history:remove',
+    clear: 'history:clear',
+    open: 'history:open',
+    changed: 'history:changed',
+    view: 'history:view',
   },
 } as const;

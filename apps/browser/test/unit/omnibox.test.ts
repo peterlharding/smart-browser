@@ -14,6 +14,8 @@ describe('resolveInput', () => {
     ['[::1]:8080/x', 'http://[::1]:8080/x'],
     ['about:blank', 'about:blank'],
     ['file:///Users/someone/notes.html', 'file:///Users/someone/notes.html'],
+    ['smart://history', 'smart://history/'],
+    ['smart://history/?q=postgres', 'smart://history/?q=postgres'],
   ])('visits %s', (input, url) => {
     expect(resolveInput(input, 'duckduckgo')).toBe(url);
   });
@@ -24,6 +26,7 @@ describe('resolveInput', () => {
     ['javascript:alert(1)', 'javascript%3Aalert(1)'],
     ['data:text/html,hi', 'data%3Atext%2Fhtml%2Chi'],
     ['what is a.b', 'what%20is%20a.b'],
+    ['smart://ui/chrome.html', 'smart%3A%2F%2Fui%2Fchrome.html'],
   ])('searches for %s rather than opening it', (input, encoded) => {
     expect(resolveInput(input, 'duckduckgo')).toBe(`https://duckduckgo.com/?q=${encoded}`);
   });
