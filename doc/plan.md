@@ -96,9 +96,10 @@ by a worker — are sketched against the schema in
 [`m3-crawler-options.md`](m3-crawler-options.md), with the recommendation and the one
 measurement that would overturn it. Undecided until an ADR says otherwise.
 
-**Blocked on one fact:** `CREATE EXTENSION vector` fails on a stock `postgres:18` image.
-Whether the running container has pgvector decides whether M3 starts with a container
-swap. Cheap to answer, cheap to act on with one save in the database.
+**Unblocked — 2026-09-21.** pgvector 0.8.5 is available in the running container, so no
+container swap. It is not a trusted extension, so installing it needs `postgres`, not
+`api`: M3 starts with a one-time bootstrap step and a migration that asserts rather than
+creates. Everything after that runs as `api`, verified.
 
 ---
 

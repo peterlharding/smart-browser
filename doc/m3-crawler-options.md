@@ -33,18 +33,42 @@ keep, and it is why `bookmark` already carries `title`, `description`, `site`,
 **`fetched_at IS NULL` means never fetched.** It does not mean dead, and it does not mean
 failed. Whatever else is decided, that distinction has to survive.
 
-### Prerequisite to check first
+### Prerequisite — checked, 2026-09-21
 
-`CREATE EXTENSION vector` fails on a stock `postgres:18` image. Before any of this is
-worth designing further, confirm the container has pgvector — `pgvector/pgvector:pg18`, or
-the extension installed into the current image. One command:
+pgvector **0.8.5 is available** in the running container and not yet installed. No
+container swap; one command creates it. But not as `api`:
 
-```sh
-make db-connect   # then: SELECT * FROM pg_available_extensions WHERE name = 'vector';
+```text
+api=> CREATE EXTENSION vector;
+ERROR:  permission denied to create extension "vector"
+HINT:  Must be superuser to create this extension.
 ```
 
-If it is missing, that is a container swap on a database with one save in it — trivial
-now, not later.
+pgvector is not a *trusted* extension — its `vector.control` carries no `trusted = true`,
+at 0.8.x as at 0.6 — so a database owner cannot install it; only a superuser can. That is
+a fact about the extension, not about how this database was set up, and it has one
+consequence for the design:
+
+**Revision `0002` must not try to create the extension.** The migration runs as `api`, so
+`CREATE EXTENSION vector` inside it would fail every time, on every machine. Instead:
+
+- A one-time bootstrap, run as `postgres`, in `db/schema/bootstrap.sql` behind a
+  `make db-bootstrap` target that says which role it needs.
+- Revision `0002` *asserts* the extension is present and fails with the exact command to
+  run if it is not — the same shape as the schema guard, which exists because a missing
+  precondition should name its own fix rather than surface as a type error three
+  statements later.
+
+Once it exists, `api` needs nothing further. Verified against a matching setup — a
+non-superuser role that owns its database — creating the content table, the `hnsw` and
+`gin` indexes, inserting a 384-dimension vector and running a `<=>` cosine query, all as
+that role, with every object owned by it:
+
+```text
+ probe_content_pkey   | api
+ probe_emb_idx        | api
+ probe_tsv_idx        | api
+```
 
 ---
 
