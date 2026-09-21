@@ -9,6 +9,169 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-21
+
+See [release_notes/v0.2.0.md](release_notes/v0.2.0.md) for details.
+
+### Added
+
+- **The crawl worker** ([ADR 0012](doc/decisions/0012-crawl-worker.md)). `make worker`
+  drains `crawl_job` one page at a time: claim with `FOR UPDATE SKIP LOCKED` and a
+  ten-minute lease, fetch with no transaction open, record the outcome. It fills
+  `bookmark.title` (the lowest-ranked title, ADR 0010), `description`, `http_status`,
+  `fetched_at` and `bookmark_content.text`, extracted with `trafilatura` so the text is
+  the article rather than the navigation around it. Limits: 30 seconds, 5 redirects,
+  5 MB, one request per host per second, HTML only. Loopback, link-local and
+  private-network addresses are refused at every redirect unless `CRAWL_ALLOW_PRIVATE`.
+  4xx fails at once with the status kept; 429, 5xx and network errors retry after 1, 4,
+  16, 64 and 256 minutes, honouring `Retry-After` up to a day. `make crawl-backfill`
+  queues pages saved before the queue existed; `make crawl-status` shows jobs by state
+  and the latest errors.
+- **Re-saving a page whose crawl failed revives the job.** A job that is ready, running
+  or done is still left alone.
+
+- **M3, first half: content and the crawl queue** (revision `0002`). `bookmark_content`
+  holds extracted text, a generated `tsvector` and a 384-dimension embedding, keyed by
+  URL so ten people saving a page pay for one fetch. `crawl_job` is the queue: keyed by
+  `bookmark_id` so one outstanding crawl per URL is a database invariant, written in the
+  same transaction as the bookmark so "saved but never queued" is unreachable. The worker
+  that drains it is not here yet. [ADR 0009](doc/decisions/0009-crawl-queue-in-postgres.md)
+- `make db-bootstrap` installs the `vector` extension as a superuser. pgvector is not a
+  trusted extension, so the role that runs migrations cannot install it; revision `0002`
+  checks for it and names this command rather than failing later on a missing type.
+- `db/migrations/sqlrunner.py` — the manifest runner, shared by every revision instead of
+  copied into each. Each revision has its own manifest: `create_tables.sql` is `0001`,
+  `create_content.sql` is `0002`, and a test insists every create file is named by
+  exactly one of them.
+
+- **Bearer auth is declared as a security scheme**, so `/api/v2/docs` has an Authorize
+  dialog and every protected operation shows a padlock. Reading the `Authorization`
+  header by hand left FastAPI nothing to put in the OpenAPI document, and the docs page
+  offered a bare header field instead — which invites `Bearer: <token>`, a 401.
+- **Chrome extension** (`apps/extension/`): MV3, with a save sheet that shows existing tags
+  and offers autocomplete ranked by your own usage. `⌘⇧B` to tag and save, `⌘⇧S` to quick
+  save. Opening the popup is a lookup, never a write.
+- `GET /api/v2/bookmarks/lookup` — read-before-write by URL.
+- Soft delete on saves, with re-saving a deleted page restoring it rather than duplicating.
+- `test_duplication.py` and `test_scoping.py` covering the two guarantees the schema buys.
+- `scripts/version.py` now manages the extension's `package.json` and `manifest.json`,
+  stripping the prerelease suffix for the manifest since Chrome rejects it.
+
+### Changed
+
+- **URL normalisation merges only spellings of the same resource**
+  ([ADR 0011](doc/decisions/0011-conservative-url-normalisation.md)). Its output is both
+  `url_hash` and the stored `bookmark.url`, the link you open and the crawler fetches, so
+  every rule that merged pages which only *usually* match was rewriting links. It no
+  longer strips a trailing slash (`/docs/` stays), sorts the query (`?a=2&a=1` kept an
+  ordered list in the wrong order), re-encodes it (`?edit` became `?edit=`, `%20` became
+  `+`, and a malformed escape was corrupted into U+FFFD), strips `campaign_id`, `trk`,
+  `icid`, `scid`, `cmpid` or `ref_src` (generic names some sites use to select content),
+  or drops hash routes (`#/settings` collapsed every page of an app to its root; routes
+  starting `/` or `!` are now kept on every host, not three). Tracking parameters are cut
+  from the query as written. Host casing, default ports, IDN to punycode and RFC 3986
+  escape normalisation still merge. Only http and https are accepted: `chrome://`,
+  `about:`, `file:` and the rest are a 422 naming the scheme, where `about:blank` used to
+  fail with a message about a port.
+- **`make rehash-urls`** rekeys existing rows after any change to the rules, the tracking
+  list included. It reports rows whose new key another row holds instead of merging
+  them, and rows the rules now reject instead of deleting them, and changes nothing
+  without `CONFIRM=yes`. Run against the real database for this change: nothing to do.
+
+- **The title seen at save time has its own column**, `user_bookmark.saved_title`
+  (revision `0003`, [ADR 0010](doc/decisions/0010-title-seen-at-save.md)). The extension
+  had been writing the tab title into `title_override`, which wins over everything, so
+  the titles M3 is about to crawl would never have shown for anything saved from the
+  extension, and a title you corrected was indistinguishable from one Chrome showed.
+  `POST /bookmarks` `title` now writes `saved_title` and a re-save with a title refreshes
+  it; `PATCH` `title` still writes `title_override`. Display is what you typed, then what
+  you saw, then what was crawled: behind a login the crawler sees "Sign in", so the
+  saved title outranks it. Existing overrides move to `saved_title`, since no client has
+  ever let anyone type one. Request and response shapes are unchanged; contract `1`.
+- **The API path is `/api/v1`, not `/api/v2`**, and `API_CONTRACT_VERSION` is `1`. The
+  `2` was inherited from the predecessor, where it meant something; here it named a v1
+  that never existed. One client, one constant and one generated contract file — the
+  cheapest this will ever be. History is not rewritten: entries under `0.1.0` and
+  `release_notes/` still say `/api/v2`, because that is what that release served. See
+  [ADR 0008](doc/decisions/0008-api-path-v1.md).
+
+- **Surrogate keys are `bigint GENERATED ALWAYS AS IDENTITY`**, replacing `SERIAL`
+  integers. `ALWAYS` rather than `BY DEFAULT`: an explicit id written past the sequence
+  leaves it behind the data, and the next generated value collides. The models mirror it
+  with `Identity(always=True)` and a `with_variant(Integer, "sqlite")` so the SQLite test
+  suite keeps auto-assigning — a `BIGINT` primary key is not a rowid alias there, and
+  inserts omitting it would fail.
+- **The schema is now explicit SQL**, one object per file in `db/schema/create/`, with
+  `create_tables.sql` as the ordered manifest that both psql and the Alembic revision
+  read — so the ordering exists once. `db/schema/drop/drop_tables.sql` is the downgrade.
+  Create files carry no `DROP`, and the revision refuses any psql meta-command it cannot
+  run rather than skipping it.
+- Server defaults added to `is_active`, `visit_count` and `bookmark_tag.source`. They had
+  Python-side defaults only, which apply when the ORM inserts and not when anything else
+  does — including this API's own `INSERT ... ON CONFLICT` statements.
+
+- **Python tooling moved to [uv](https://docs.astral.sh/uv/)**, matching how these
+  projects are built elsewhere. `uv.lock` is committed and CI installs from it with
+  `--frozen`, so a lockfile out of step with `pyproject.toml` fails the build instead of
+  resolving something else. Dev tools moved from an optional extra to a PEP 735
+  `[dependency-groups]`, which plain `uv sync` installs. Every `make` target now runs
+  through `uv run`, which syncs first — so they work from a clean checkout.
+- Added `make db-doctor`: prints which `.env` files were found, any `DB_*` shadowing them
+  from the environment, where the package was imported from, what the settings resolve to,
+  and what the server it reaches says about itself — database, role, listening port and
+  `data_directory`. For when a migration reports success and the tables are not where you
+  expect, which several Postgres instances on one machine makes easy.
+- Added `make db-connect`, which reads `apps/api/.env` rather than hardcoding a host,
+  port and role that now live in one place.
+- **`DB_USER` is now required.** Left empty it built `postgresql+psycopg://:@…`, where
+  libpq falls back to the operating-system user — so migrations connected as whoever ran
+  them and, since Postgres assigns table ownership to whoever runs `CREATE TABLE`, left
+  every table owned by the wrong role. It succeeded, which is what made it worth an
+  exception. `database_url` now refuses to build without it and names the file to edit.
+- **`.env` is read by absolute path**, not resolved against the working directory, so
+  `alembic -c apps/api/alembic.ini` from the repo root no longer silently finds nothing
+  and falls back to every default. Two files are read — `<repo root>/.env` for what the
+  monorepo shares and `apps/api/.env` for API-specific overrides — with the latter
+  winning and real environment variables beating both.
+- Alembic prints the database and role it connected as before running any DDL.
+- The engine is created on first use rather than at import, so importing the app no longer
+  requires a working database configuration.
+- **The database is now called `page_history`**, and the default connection points at a
+  stock local Postgres on 5432. The previous defaults — port 5436, database `bookmarks` —
+  were the predecessor's Docker instance and its database, so a default `make migrate`
+  would have run DDL against a system this project has no business touching.
+- Schema-guard errors now name the database, host and port they are talking about. Being
+  pointed at the wrong database is the commonest cause of both of them, and a message that
+  omits which database it means sends you to the migrations instead of the connection
+  string.
+- **Treated as a new implementation** rather than a successor (ADR 0007). The importer
+  milestone and the `/xyzzy` retirement milestone are both out of scope: the predecessor
+  will be brought into line with this project rather than the reverse, and nothing here
+  explains itself by reference to a schema nobody will run again.
+- `doc/audit-2026-09-20.md` is reframed as evidence about the problem — eleven years of a
+  bookmarking system's measured failure modes — rather than a description of data being
+  migrated. It stays unedited and stays load-bearing.
+- **The API owns a clean database** rather than running against the v1 `bookmarks-pg`
+  tables (ADR 0006). Revisions `0001` and `0002` are replaced by a single revision creating
+  the target schema: identity, the `bookmark` / `user_bookmark` split, a global tag
+  vocabulary with aliases, and tag links carrying provenance.
+- **No-duplicates is now a database constraint.** `UNIQUE (url_hash)` plus
+  `INSERT ... ON CONFLICT DO NOTHING` replaces check-then-insert, so saving the same page
+  any number of times from any number of clients cannot produce a second row.
+- **Reads require a token.** Bookmarks belong to a user, so an anonymous read has no
+  coherent answer. `/health` remains open.
+- `API_TOKENS` accepts `name:token` pairs, so more than one client can act as more than
+  one user before OAuth lands.
+- Tag names are no longer capped at 32 characters, and are no longer stored in `citext` —
+  the application lowercases on every write path, so a plain `UNIQUE` suffices.
+
+### Removed
+
+- `ids.py` and its advisory-lock id allocation, and the URL lock that serialised
+  check-then-insert. Both existed only to work around what the schema now enforces.
+- The URL string fallback and opportunistic hash backfill, which existed to recognise
+  un-normalised v1 rows.
+
 ### Fixed
 
 - **A version bump left `apps/api/uv.lock` stale.** The lockfile records the API
@@ -151,165 +314,6 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
   Makefile targets and error messages.
 - Added `make migrate-revision M="..."`.
 
-### Changed
-
-- **URL normalisation merges only spellings of the same resource**
-  ([ADR 0011](doc/decisions/0011-conservative-url-normalisation.md)). Its output is both
-  `url_hash` and the stored `bookmark.url`, the link you open and the crawler fetches, so
-  every rule that merged pages which only *usually* match was rewriting links. It no
-  longer strips a trailing slash (`/docs/` stays), sorts the query (`?a=2&a=1` kept an
-  ordered list in the wrong order), re-encodes it (`?edit` became `?edit=`, `%20` became
-  `+`, and a malformed escape was corrupted into U+FFFD), strips `campaign_id`, `trk`,
-  `icid`, `scid`, `cmpid` or `ref_src` (generic names some sites use to select content),
-  or drops hash routes (`#/settings` collapsed every page of an app to its root; routes
-  starting `/` or `!` are now kept on every host, not three). Tracking parameters are cut
-  from the query as written. Host casing, default ports, IDN to punycode and RFC 3986
-  escape normalisation still merge. Only http and https are accepted: `chrome://`,
-  `about:`, `file:` and the rest are a 422 naming the scheme, where `about:blank` used to
-  fail with a message about a port.
-- **`make rehash-urls`** rekeys existing rows after any change to the rules, the tracking
-  list included. It reports rows whose new key another row holds instead of merging
-  them, and rows the rules now reject instead of deleting them, and changes nothing
-  without `CONFIRM=yes`. Run against the real database for this change: nothing to do.
-
-- **The title seen at save time has its own column**, `user_bookmark.saved_title`
-  (revision `0003`, [ADR 0010](doc/decisions/0010-title-seen-at-save.md)). The extension
-  had been writing the tab title into `title_override`, which wins over everything, so
-  the titles M3 is about to crawl would never have shown for anything saved from the
-  extension, and a title you corrected was indistinguishable from one Chrome showed.
-  `POST /bookmarks` `title` now writes `saved_title` and a re-save with a title refreshes
-  it; `PATCH` `title` still writes `title_override`. Display is what you typed, then what
-  you saw, then what was crawled: behind a login the crawler sees "Sign in", so the
-  saved title outranks it. Existing overrides move to `saved_title`, since no client has
-  ever let anyone type one. Request and response shapes are unchanged; contract `1`.
-- **The API path is `/api/v1`, not `/api/v2`**, and `API_CONTRACT_VERSION` is `1`. The
-  `2` was inherited from the predecessor, where it meant something; here it named a v1
-  that never existed. One client, one constant and one generated contract file — the
-  cheapest this will ever be. History is not rewritten: entries under `0.1.0` and
-  `release_notes/` still say `/api/v2`, because that is what that release served. See
-  [ADR 0008](doc/decisions/0008-api-path-v1.md).
-
-- **Surrogate keys are `bigint GENERATED ALWAYS AS IDENTITY`**, replacing `SERIAL`
-  integers. `ALWAYS` rather than `BY DEFAULT`: an explicit id written past the sequence
-  leaves it behind the data, and the next generated value collides. The models mirror it
-  with `Identity(always=True)` and a `with_variant(Integer, "sqlite")` so the SQLite test
-  suite keeps auto-assigning — a `BIGINT` primary key is not a rowid alias there, and
-  inserts omitting it would fail.
-- **The schema is now explicit SQL**, one object per file in `db/schema/create/`, with
-  `create_tables.sql` as the ordered manifest that both psql and the Alembic revision
-  read — so the ordering exists once. `db/schema/drop/drop_tables.sql` is the downgrade.
-  Create files carry no `DROP`, and the revision refuses any psql meta-command it cannot
-  run rather than skipping it.
-- Server defaults added to `is_active`, `visit_count` and `bookmark_tag.source`. They had
-  Python-side defaults only, which apply when the ORM inserts and not when anything else
-  does — including this API's own `INSERT ... ON CONFLICT` statements.
-
-- **Python tooling moved to [uv](https://docs.astral.sh/uv/)**, matching how these
-  projects are built elsewhere. `uv.lock` is committed and CI installs from it with
-  `--frozen`, so a lockfile out of step with `pyproject.toml` fails the build instead of
-  resolving something else. Dev tools moved from an optional extra to a PEP 735
-  `[dependency-groups]`, which plain `uv sync` installs. Every `make` target now runs
-  through `uv run`, which syncs first — so they work from a clean checkout.
-- Added `make db-doctor`: prints which `.env` files were found, any `DB_*` shadowing them
-  from the environment, where the package was imported from, what the settings resolve to,
-  and what the server it reaches says about itself — database, role, listening port and
-  `data_directory`. For when a migration reports success and the tables are not where you
-  expect, which several Postgres instances on one machine makes easy.
-- Added `make db-connect`, which reads `apps/api/.env` rather than hardcoding a host,
-  port and role that now live in one place.
-- **`DB_USER` is now required.** Left empty it built `postgresql+psycopg://:@…`, where
-  libpq falls back to the operating-system user — so migrations connected as whoever ran
-  them and, since Postgres assigns table ownership to whoever runs `CREATE TABLE`, left
-  every table owned by the wrong role. It succeeded, which is what made it worth an
-  exception. `database_url` now refuses to build without it and names the file to edit.
-- **`.env` is read by absolute path**, not resolved against the working directory, so
-  `alembic -c apps/api/alembic.ini` from the repo root no longer silently finds nothing
-  and falls back to every default. Two files are read — `<repo root>/.env` for what the
-  monorepo shares and `apps/api/.env` for API-specific overrides — with the latter
-  winning and real environment variables beating both.
-- Alembic prints the database and role it connected as before running any DDL.
-- The engine is created on first use rather than at import, so importing the app no longer
-  requires a working database configuration.
-- **The database is now called `page_history`**, and the default connection points at a
-  stock local Postgres on 5432. The previous defaults — port 5436, database `bookmarks` —
-  were the predecessor's Docker instance and its database, so a default `make migrate`
-  would have run DDL against a system this project has no business touching.
-- Schema-guard errors now name the database, host and port they are talking about. Being
-  pointed at the wrong database is the commonest cause of both of them, and a message that
-  omits which database it means sends you to the migrations instead of the connection
-  string.
-- **Treated as a new implementation** rather than a successor (ADR 0007). The importer
-  milestone and the `/xyzzy` retirement milestone are both out of scope: the predecessor
-  will be brought into line with this project rather than the reverse, and nothing here
-  explains itself by reference to a schema nobody will run again.
-- `doc/audit-2026-09-20.md` is reframed as evidence about the problem — eleven years of a
-  bookmarking system's measured failure modes — rather than a description of data being
-  migrated. It stays unedited and stays load-bearing.
-- **The API owns a clean database** rather than running against the v1 `bookmarks-pg`
-  tables (ADR 0006). Revisions `0001` and `0002` are replaced by a single revision creating
-  the target schema: identity, the `bookmark` / `user_bookmark` split, a global tag
-  vocabulary with aliases, and tag links carrying provenance.
-- **No-duplicates is now a database constraint.** `UNIQUE (url_hash)` plus
-  `INSERT ... ON CONFLICT DO NOTHING` replaces check-then-insert, so saving the same page
-  any number of times from any number of clients cannot produce a second row.
-- **Reads require a token.** Bookmarks belong to a user, so an anonymous read has no
-  coherent answer. `/health` remains open.
-- `API_TOKENS` accepts `name:token` pairs, so more than one client can act as more than
-  one user before OAuth lands.
-- Tag names are no longer capped at 32 characters, and are no longer stored in `citext` —
-  the application lowercases on every write path, so a plain `UNIQUE` suffices.
-
-### Removed
-
-- `ids.py` and its advisory-lock id allocation, and the URL lock that serialised
-  check-then-insert. Both existed only to work around what the schema now enforces.
-- The URL string fallback and opportunistic hash backfill, which existed to recognise
-  un-normalised v1 rows.
-
-### Added
-
-- **The crawl worker** ([ADR 0012](doc/decisions/0012-crawl-worker.md)). `make worker`
-  drains `crawl_job` one page at a time: claim with `FOR UPDATE SKIP LOCKED` and a
-  ten-minute lease, fetch with no transaction open, record the outcome. It fills
-  `bookmark.title` (the lowest-ranked title, ADR 0010), `description`, `http_status`,
-  `fetched_at` and `bookmark_content.text`, extracted with `trafilatura` so the text is
-  the article rather than the navigation around it. Limits: 30 seconds, 5 redirects,
-  5 MB, one request per host per second, HTML only. Loopback, link-local and
-  private-network addresses are refused at every redirect unless `CRAWL_ALLOW_PRIVATE`.
-  4xx fails at once with the status kept; 429, 5xx and network errors retry after 1, 4,
-  16, 64 and 256 minutes, honouring `Retry-After` up to a day. `make crawl-backfill`
-  queues pages saved before the queue existed; `make crawl-status` shows jobs by state
-  and the latest errors.
-- **Re-saving a page whose crawl failed revives the job.** A job that is ready, running
-  or done is still left alone.
-
-- **M3, first half: content and the crawl queue** (revision `0002`). `bookmark_content`
-  holds extracted text, a generated `tsvector` and a 384-dimension embedding, keyed by
-  URL so ten people saving a page pay for one fetch. `crawl_job` is the queue: keyed by
-  `bookmark_id` so one outstanding crawl per URL is a database invariant, written in the
-  same transaction as the bookmark so "saved but never queued" is unreachable. The worker
-  that drains it is not here yet. [ADR 0009](doc/decisions/0009-crawl-queue-in-postgres.md)
-- `make db-bootstrap` installs the `vector` extension as a superuser. pgvector is not a
-  trusted extension, so the role that runs migrations cannot install it; revision `0002`
-  checks for it and names this command rather than failing later on a missing type.
-- `db/migrations/sqlrunner.py` — the manifest runner, shared by every revision instead of
-  copied into each. Each revision has its own manifest: `create_tables.sql` is `0001`,
-  `create_content.sql` is `0002`, and a test insists every create file is named by
-  exactly one of them.
-
-- **Bearer auth is declared as a security scheme**, so `/api/v2/docs` has an Authorize
-  dialog and every protected operation shows a padlock. Reading the `Authorization`
-  header by hand left FastAPI nothing to put in the OpenAPI document, and the docs page
-  offered a bare header field instead — which invites `Bearer: <token>`, a 401.
-- **Chrome extension** (`apps/extension/`): MV3, with a save sheet that shows existing tags
-  and offers autocomplete ranked by your own usage. `⌘⇧B` to tag and save, `⌘⇧S` to quick
-  save. Opening the popup is a lookup, never a write.
-- `GET /api/v2/bookmarks/lookup` — read-before-write by URL.
-- Soft delete on saves, with re-saving a deleted page restoring it rather than duplicating.
-- `test_duplication.py` and `test_scoping.py` covering the two guarantees the schema buys.
-- `scripts/version.py` now manages the extension's `package.json` and `manifest.json`,
-  stripping the prerelease suffix for the manifest since Chrome rejects it.
-
 ### Documentation
 
 - Recorded the PostgreSQL version floor the target schema assumes (12+ for generated
@@ -351,5 +355,6 @@ First release. See [release_notes/v0.1.0.md](release_notes/v0.1.0.md) for detail
   enforced version across `package.json`, `pyproject.toml` and `__init__.py`, `make check`
   as the release gate, and a CI workflow running the same checks.
 
-[Unreleased]: https://github.com/peterlharding/smart-browser/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/peterlharding/smart-browser/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/peterlharding/smart-browser/releases/tag/v0.2.0
 [0.1.0]: https://github.com/peterlharding/smart-browser/releases/tag/v0.1.0
