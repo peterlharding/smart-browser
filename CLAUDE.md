@@ -108,6 +108,12 @@ failure is not evidence.**
   of every layer in `apps/browser/test-results/snapshots/` to look at, not only assert on.
   The UI, the tabs and the overlay are separate views of one window: Playwright sees each
   as a page, and a detached view's page is gone, so fetch the overlay afresh after it opens.
+  Playwright's Electron launch changes the app under test, silently: its loader appends
+  `--password-store=basic` and `--use-mock-keychain` with `appendSwitch`, overriding any
+  switch you pass (on Linux that means no encryption, so the browser refuses its token;
+  `test/e2e/linux-secret-store.cjs` undoes it), and it adds `--no-sandbox` on Linux unless
+  `chromiumSandbox: true`. Chromium switches go before the app path; after it, Electron
+  hands them to the app. When CI and a bare `electron` disagree, suspect the harness.
 - **Extension** (`make test-ext`): `node --test`, no dependencies. Node's `fetch` does not
   check its receiver and Chrome's does, so the suite carries a stand-in that is as strict
   as the browser. Keep it that way.
