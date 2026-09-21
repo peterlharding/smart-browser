@@ -303,7 +303,8 @@ src/bookmarks_api/
 ├── models.py        the schema: bookmark / user_bookmark / tag
 ├── schemas.py       the v2 contract
 ├── schema_guard.py  refuses to start against a mismatched database
-├── urlnorm.py       normalisation + hashing; the dedupe foundation
+├── urlnorm.py       normalisation + hashing; the dedupe foundation (ADR 0011)
+├── rehash.py        rekeys existing rows after a urlnorm change: make rehash-urls
 └── routers/
 ```
 

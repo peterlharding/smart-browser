@@ -11,6 +11,11 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **IPv6 URLs were stored invalid.** `http://[::1]:8080/x` normalised to
+  `http://::1:8080/x` because the brackets were dropped when the host was reassembled.
+- **`trkCampaign` never matched as a tracking parameter.** It was listed in mixed case
+  and keys were lowercased before the lookup. It has since left the list (ADR 0011);
+  entries are now lowercase and matching is case-insensitive.
 - **`DB_NAME=... make <target>` acted on the `.env` database, not the one named.** The
   Makefile read `.env` with `:=`, which replaced a value from the environment, and make
   exports a variable that arrived from the environment, so the recipe saw the `.env` value
@@ -140,6 +145,25 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 - Added `make migrate-revision M="..."`.
 
 ### Changed
+
+- **URL normalisation merges only spellings of the same resource**
+  ([ADR 0011](doc/decisions/0011-conservative-url-normalisation.md)). Its output is both
+  `url_hash` and the stored `bookmark.url`, the link you open and the crawler fetches, so
+  every rule that merged pages which only *usually* match was rewriting links. It no
+  longer strips a trailing slash (`/docs/` stays), sorts the query (`?a=2&a=1` kept an
+  ordered list in the wrong order), re-encodes it (`?edit` became `?edit=`, `%20` became
+  `+`, and a malformed escape was corrupted into U+FFFD), strips `campaign_id`, `trk`,
+  `icid`, `scid`, `cmpid` or `ref_src` (generic names some sites use to select content),
+  or drops hash routes (`#/settings` collapsed every page of an app to its root; routes
+  starting `/` or `!` are now kept on every host, not three). Tracking parameters are cut
+  from the query as written. Host casing, default ports, IDN to punycode and RFC 3986
+  escape normalisation still merge. Only http and https are accepted: `chrome://`,
+  `about:`, `file:` and the rest are a 422 naming the scheme, where `about:blank` used to
+  fail with a message about a port.
+- **`make rehash-urls`** rekeys existing rows after any change to the rules, the tracking
+  list included. It reports rows whose new key another row holds instead of merging
+  them, and rows the rules now reject instead of deleting them, and changes nothing
+  without `CONFIRM=yes`. Run against the real database for this change: nothing to do.
 
 - **The title seen at save time has its own column**, `user_bookmark.saved_title`
   (revision `0003`, [ADR 0010](doc/decisions/0010-title-seen-at-save.md)). The extension

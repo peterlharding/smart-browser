@@ -103,6 +103,14 @@ release cannot be cut with an API that reports the wrong version.
 
    The API will refuse to start against a database that is behind, so a forgotten migration is a failed boot rather than a corrupted request. That is the intent — do not work around it by setting `SCHEMA_CHECK=false`.
 
+   **If `urlnorm.py` changed**, including a new tracking parameter, existing rows hold keys the new rules would not produce, and nothing refuses to start over it: a re-save of the same page quietly misses its row and creates a second one.
+   Rekey them with the deploy, and resolve any collision it reports by hand (ADR 0011):
+
+   ```sh
+   make rehash-urls              # what would change
+   make rehash-urls CONFIRM=yes  # change it
+   ```
+
 7. **Commit** the version bump, changelog, and release notes together:
 
    ```sh

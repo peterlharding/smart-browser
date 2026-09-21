@@ -61,7 +61,7 @@ def test_repeated_tags_do_not_create_duplicate_links(client, auth):
 
 def test_stored_url_is_normalised(client, auth):
     r = post(client, auth, url="HTTPS://Example.COM:443/docs/?utm_medium=x#frag")
-    assert r.json()["url"] == "https://example.com/docs"
+    assert r.json()["url"] == "https://example.com/docs/"
 
 
 def test_invalid_url_is_rejected(client, auth):
@@ -239,13 +239,28 @@ def test_lookup_finds_a_saved_url_with_its_tags(client, auth):
 
 
 def test_lookup_matches_through_normalisation(client, auth):
-    post(client, auth, url="https://example.com/docs")
+    post(client, auth, url="https://example.com/docs/")
     r = client.get(
         "/api/v1/bookmarks/lookup",
         params={"url": "HTTPS://Example.COM:443/docs/?utm_source=x#frag"},
         headers=auth,
     )
     assert r.status_code == status.HTTP_200_OK
+
+
+def test_lookup_does_not_merge_a_trailing_slash(client, auth):
+    """`/docs` and `/docs/` are different URLs (ADR 0011): saving one is not saving both."""
+    post(client, auth, url="https://example.com/docs/")
+    r = client.get(
+        "/api/v1/bookmarks/lookup", params={"url": "https://example.com/docs"}, headers=auth
+    )
+    assert r.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_a_url_that_is_not_http_is_rejected_with_the_reason(client, auth):
+    r = post(client, auth, url="chrome://extensions")
+    assert r.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "only http and https" in r.json()["detail"]
 
 
 def test_lookup_of_an_unsaved_url_is_404(client, auth):

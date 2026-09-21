@@ -46,7 +46,7 @@ help:  ## Show this help
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
         api-lint api-openapi test test-api test-scripts test-ext test-pg \
         migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
-        db-connect db-doctor db-bootstrap schema-drop
+        db-connect db-doctor db-bootstrap schema-drop rehash-urls
 
 
 # --- the release gate -------------------------------------------------------
@@ -171,6 +171,12 @@ db-bootstrap:  ## Install the pgvector extension (superuser, once per database):
 	@echo "pgvector is not a trusted extension, so the application role cannot do this."
 	psql "postgresql://$(PG_SUPERUSER)@$(DB_HOST):$(DB_PORT)/$(DB)" \
 	  -v ON_ERROR_STOP=1 -f db/schema/bootstrap.sql
+
+# After any change to urlnorm.py -- including a new tracking parameter -- existing rows hold
+# keys the new rules would not produce, and a re-save of the same page misses its row.
+# Without CONFIRM=yes this only reports. Collisions and invalid rows are never touched.
+rehash-urls:  ## Rekey bookmarks under the current URL rules: [CONFIRM=yes] to apply
+	cd apps/api && uv run python -m bookmarks_api.rehash $(if $(filter yes,$(CONFIRM)),--confirm)
 
 db-doctor:  ## Show which database the settings actually reach, and what is in it
 	cd apps/api && uv run python -m bookmarks_api.doctor

@@ -34,6 +34,7 @@ make migrate        # alembic upgrade head
 make db-bootstrap   # CREATE EXTENSION vector, as a superuser; once per database
                     # and the test one too: make db-bootstrap DB=page_history_test
 make db-doctor      # which database, as whom, which revision, which tables
+make rehash-urls    # after any urlnorm.py change; CONFIRM=yes to apply
 make schema-drop CONFIRM=yes
 ```
 
@@ -71,6 +72,11 @@ packages/shared-types/openapi.json   generated; `make api-openapi`.
   diffs them (columns, types, nullability, defaults, identity, enum labels, keys). Change
   one, change the other, or that test fails. `bookmark_content.tsv` is the single listed
   exception.
+- **URL normalisation merges only spellings of the same resource** (ADR 0011). Its output
+  is the identity *and* the stored link, so a rule that merges pages which only usually
+  match rewrites someone's link and loses a page for good. No trailing-slash stripping, no
+  query sorting, no re-encoding; http and https only. Any change to `urlnorm.py`,
+  including a new tracking parameter, needs `make rehash-urls` on existing databases.
 - `bookmark` is the URL; `user_bookmark` is one person's save. Crawl and embed cost is
   per-URL, never per-user-per-URL (ADR 0001).
 - `UNIQUE (url_hash)` is the entire no-duplicates guarantee. `POST /bookmarks` is an

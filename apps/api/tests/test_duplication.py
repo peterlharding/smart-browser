@@ -29,11 +29,15 @@ def test_first_save_is_201_and_the_rest_are_200(client, auth):
 
 
 def test_every_spelling_of_the_same_page_is_one_row(client, auth, db):
-    """The spellings that produced most of the duplicates the audit measured."""
+    """Spellings RFC 3986 defines as one resource, plus click trackers (ADR 0011).
+
+    Not `/docs/`: a trailing slash is a different URL, and merging spellings that only
+    usually name the same page is the mistake ADR 0011 removed.
+    """
     for variant in [
         "https://example.com/docs",
-        "https://example.com/docs/",
         "HTTPS://EXAMPLE.COM/docs",
+        "https://example.com/%64ocs",
         "https://example.com:443/docs",
         "https://example.com/docs#section",
         "https://example.com/docs?utm_source=newsletter",

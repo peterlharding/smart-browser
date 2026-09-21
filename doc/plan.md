@@ -163,5 +163,6 @@ ADR 0002 chose a global vocabulary. Adding a per-user private namespace later is
 | 2026-09-21 | API path is `/api/v1`; contract version 1 | [ADR 0008](decisions/0008-api-path-v1.md) |
 | 2026-09-21 | Local-only deployment for now; M1 deferred behind M3 | this plan, Milestones |
 | 2026-09-21 | Title seen at save is per save, apart from the title you chose; you, then seen, then crawled | [ADR 0010](decisions/0010-title-seen-at-save.md) |
+| 2026-09-21 | URL normalisation merges only spellings of the same resource; http and https only | [ADR 0011](decisions/0011-conservative-url-normalisation.md) |
 | 2026-09-21 | First end-to-end save: extension → API → Postgres, verified in Swagger | this plan, M0 |
 | 2026-09-20 | Schema on Alembic revisions; contract version separate from release version; compatibility enforced by checks, not numbers | [ADR 0005](decisions/0005-versioning-and-compatibility.md) |
