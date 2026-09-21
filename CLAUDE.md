@@ -1,0 +1,115 @@
+# Smart-Browser — working notes for Claude Code
+
+A browser wrapping the Chrome engine where bookmarks behave like tags: one save, many
+categories, with AI categorisation over the corpus. Today it is an API plus a Chrome
+extension; the browser shell is M5.
+
+Read [`doc/plan.md`](doc/plan.md) first — it says what is done, what is next, and what is
+still an open question. Decisions live in [`doc/decisions/`](doc/decisions/) as ADRs;
+rationale in [`doc/architecture.md`](doc/architecture.md).
+
+## Hard rules
+
+- **Never touch `bookmarks-pg`.** The predecessor project at
+  `/Volumes/u/src/wip/bookmarks/bookmarks-pg` continues as it is. Do not read it unless
+  asked, and never write to it. Nothing here explains itself by reference to it (ADR 0007).
+- **`uv` for all Python.** `uv sync`, `uv run`, `uv add` — never bare `pip` or `python`.
+  `apps/api` and `db` are separate projects with separate lockfiles.
+- **Never put `DB_PASSWORD` in a make variable.** Make echoes recipes with values already
+  substituted, into the terminal and the scrollback. Recipes read it in the shell instead.
+- **`TEST_DATABASE_URL` must never name the real database.** The Postgres suite creates
+  and drops tables; `make test-pg` refuses the configured database and derives a
+  `<DB_NAME>_test` URL itself.
+- **No `DROP` in `db/schema/create/`.** A drop on the upgrade path is silent data loss
+  when a migration re-runs. Drops live in `db/schema/drop/`.
+
+## Commands
+
+```sh
+make check          # everything the release checklist requires
+make test           # API (SQLite) + scripts + extension — no infrastructure
+make test-pg        # Postgres suite; derives its own URL from .env
+make api-lint       # ruff + mypy
+make migrate        # alembic upgrade head
+make db-bootstrap   # CREATE EXTENSION vector, as a superuser; once per database
+make db-doctor      # which database, as whom, which revision, which tables
+make schema-drop CONFIRM=yes
+```
+
+## Layout
+
+```text
+apps/api/          FastAPI + SQLAlchemy 2.0 + psycopg 3.  Its own uv project.
+apps/extension/    MV3 Chrome extension.  Plain JS, node --test, no build step.
+apps/browser/      Electron shell (M5) — empty.
+db/                alembic.ini, migrations/, schema/.  Its own uv project: migrating
+                   needs alembic and psycopg, not the API package.
+doc/               plan, architecture, ADRs, NOTES.
+packages/shared-types/openapi.json   generated; `make api-openapi`.
+```
+
+## Schema conventions
+
+- **The DDL is SQL files**, one per object, in `db/schema/create/`. Each Alembic revision
+  has **its own manifest** — `create_tables.sql` is `0001`, `create_content.sql` is
+  `0002` — and the revision executes the files its manifest names
+  (`db/migrations/sqlrunner.py`). Manifests are never nested: the runner would execute a
+  file of meta-commands and silently do nothing. A test insists every create file is named
+  by exactly one manifest.
+- Keys are `bigint GENERATED ALWAYS AS IDENTITY`; foreign keys are `bigint`. `ALWAYS`,
+  not `BY DEFAULT`: an explicit id written past the sequence collides later, long after
+  whatever wrote it is forgotten. `OVERRIDING SYSTEM VALUE` is the deliberate escape hatch.
+- **Enums are created idempotently** and verify their labels — Postgres has no
+  `CREATE TYPE IF NOT EXISTS`, and a type survives dropping the tables that use it.
+  Tables are deliberately *not* idempotent: `IF NOT EXISTS` would accept a
+  differently-shaped table and hide real drift.
+- **The schema is stated twice** — the SQL files and `models.py` — and a Postgres test
+  diffs them (columns, types, nullability, defaults, identity, enum labels, keys). Change
+  one, change the other, or that test fails. `bookmark_content.tsv` is the single listed
+  exception.
+- `bookmark` is the URL; `user_bookmark` is one person's save. Crawl and embed cost is
+  per-URL, never per-user-per-URL (ADR 0001).
+- `UNIQUE (url_hash)` is the entire no-duplicates guarantee. `POST /bookmarks` is an
+  upsert: 201 then 200, never a second row, whatever the client does.
+
+## Testing
+
+Three suites, and the standing lesson from this project: **a test that cannot reach the
+failure is not evidence.**
+
+- **Default** (`make test-api`): SQLite in memory. Fast, no skips.
+- **Postgres** (`make test-pg`): opt-in, `-m postgres`. Covers what SQLite cannot —
+  migrations, `GENERATED ALWAYS`, the schema diff, real unique violations. It sat unrun
+  for days and found real bugs the hour it first ran; run it before claiming a schema
+  change works. The test role needs neither SUPERUSER nor CREATEDB, deliberately.
+- **Extension** (`make test-ext`): `node --test`, no dependencies. Node's `fetch` does not
+  check its receiver and Chrome's does, so the suite carries a stand-in that is as strict
+  as the browser. Keep it that way.
+
+When a bug turns out to be invisible to the suite, fix the suite in the same commit and
+say so — that is where most of this project's real defects have lived.
+
+## Conventions
+
+- **CHANGELOG entries are written with the change**, under `## [Unreleased]`, not at
+  release time. `RELEASING.md` has the workflow; `scripts/version.py` moves the versions.
+- **A decision gets an ADR.** Numbered, dated, with the options that lost and why.
+  History is not rewritten: superseded ADRs stay as they were.
+- **Commit messages say what failed and why the fix is right**, not just what changed.
+- `/api/v1` is the contract path and `API_CONTRACT_VERSION` matches it (ADR 0008).
+  `REQUIRED_SCHEMA_REVISION` in `schema_guard.py` moves with each migration; the API
+  refuses to start against a database that is not at it.
+- Auth is a declared `HTTPBearer` scheme, so `/api/v1/docs` has an Authorize dialog.
+  Tokens come from `API_TOKENS` as `name:token` pairs. With none set, the API refuses
+  everything — an unconfigured deployment should be inert, not public.
+
+## Current state
+
+M0 is done and proven end-to-end. M3 is in progress: revision `0002` added
+`bookmark_content` and `crawl_job`, and the save path enqueues inside its own
+transaction (ADR 0009). **Next: the worker** — claim with `FOR UPDATE SKIP LOCKED`, fetch
+through an injected fetcher, extract, back off — plus a backfill for saves made before the
+queue existed. Embeddings come after, as a second pass over `embedding IS NULL`.
+
+M1 (OAuth) is deferred behind M3: it replaces a working bearer token for one user, and it
+needs a deployment that can receive a callback. This runs locally for now.
