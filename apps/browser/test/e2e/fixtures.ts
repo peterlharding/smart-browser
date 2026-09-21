@@ -12,6 +12,11 @@ import { fileURLToPath } from 'node:url';
 const APP = fileURLToPath(new URL('../../', import.meta.url));
 const SNAPSHOTS = join(APP, 'test-results', 'snapshots');
 
+// On Linux (CI): the secret store is GNOME Keyring, which Chromium picks by itself only in
+// a desktop session, so it is named; and xvfb has no GPU, so capturing a page for a
+// snapshot fails unless Chromium renders in software.
+const LINUX_SWITCHES = ['--password-store=gnome-libsecret', '--disable-gpu'];
+
 export const API = () => process.env.E2E_API_URL!;
 export const TOKEN = () => process.env.E2E_API_TOKEN!;
 export const SITE = (path: string) => `${process.env.E2E_SITE!}${path}`;
@@ -28,8 +33,7 @@ export class BrowserApp {
   static async launch(profile = mkdtempSync(join(tmpdir(), 'smart-browser-e2e-'))): Promise<BrowserApp> {
     const app = await _electron.launch({
       cwd: APP,
-      // Linux CI has no keyring; the basic store keeps safeStorage usable there.
-      args: ['.', ...(process.platform === 'linux' ? ['--password-store=basic'] : [])],
+      args: ['.', ...(process.platform === 'linux' ? LINUX_SWITCHES : [])],
       env: { ...process.env, SMART_BROWSER_USER_DATA: profile },
     });
     const browser = new BrowserApp(app, profile);
