@@ -138,12 +138,19 @@ jobs:
       # to keep it without one, so the runner gets a real one rather than the browser a
       # weaker mode: GNOME Keyring, in its own D-Bus session.
       - name: A secret store for the browser's token
-        run: sudo apt-get install -y --no-install-recommends gnome-keyring dbus-x11
+        run: sudo apt-get install -y --no-install-recommends gnome-keyring dbus-x11 libsecret-tools
 
       - name: Browser end to end
         env:
           TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/page_history_test
-        run: >-
-          dbus-run-session -- bash -c
-          'echo -n ci | gnome-keyring-daemon --unlock --replace --components=secrets >/dev/null
-          && xvfb-run --auto-servernum make test-browser-e2e'
+        run: |
+          dbus-run-session -- bash -euo pipefail -c '
+            # Unlocking creates the login keyring, which becomes the default collection
+            # Chromium stores its key in; the daemon prints the environment to reach it.
+            eval "$(echo -n ci | gnome-keyring-daemon --unlock --components=secrets --replace --daemonize)"
+            export GNOME_KEYRING_CONTROL
+            # Prove the store works before the browser relies on it.
+            echo -n probe | secret-tool store --label=ci-probe service ci-probe
+            test "$(secret-tool lookup service ci-probe)" = probe
+            xvfb-run --auto-servernum make test-browser-e2e
+          '
