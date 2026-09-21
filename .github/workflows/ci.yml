@@ -5,25 +5,31 @@ on:
     branches: [main]
   pull_request:
 
+# Every uv command in the run, not only the install: `uv run` inside the make targets
+# would otherwise re-resolve and rewrite a lockfile that has drifted from pyproject.toml,
+# and CI must test what the lockfile describes. An environment variable rather than a
+# flag because `--frozen` belongs to the subcommand -- spliced into `$(UV)` it landed in
+# front of `sync` and uv refused the whole command, which failed every run from the start.
+env:
+  UV_FROZEN: "1"
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
 
-      # --frozen: fail if uv.lock does not match pyproject.toml rather than silently
-      # resolving something else. CI must test what the lockfile describes.
       - name: Install API
-        run: make api-install UV="uv --project apps/api --frozen"
+        run: make api-install
 
       - name: Check version consistency
         run: make version-check
@@ -60,7 +66,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # Revision 0002 needs pgvector, which the stock postgres image does not ship.
+        # pg18 because that is what the real database runs.
+        image: pgvector/pgvector:pg18
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: page_history_test
@@ -69,15 +77,24 @@ jobs:
           --health-timeout 5s --health-retries 5
         ports: ["5432:5432"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
 
       - name: Install API
-        run: uv --project apps/api sync --frozen
+        run: make api-install
+
+      # The same file `make db-bootstrap` applies. Here the connecting role is the
+      # superuser, so this is the step a real deployment does by hand as postgres.
+      - name: Install pgvector
+        env:
+          PGPASSWORD: postgres
+        run: >-
+          psql -h localhost -U postgres -d page_history_test
+          -v ON_ERROR_STOP=1 -f db/schema/bootstrap.sql
 
       - name: Postgres suite
         env:

@@ -76,8 +76,12 @@ test-scripts:  ## Tests for the release tooling
 test-ext:  ## Extension suite (node --test, no dependencies)
 	node --test apps/extension/test/*.test.js
 
+# .env is optional here: CI has none and passes TEST_DATABASE_URL instead. DB_NAME falls
+# back to the same default as config.py, so the refusal below still names the database a
+# default configuration would reach rather than matching nothing.
 test-pg:  ## Postgres suite against <DB_NAME>_test (creates and drops tables there)
-	@set -a; . ./.env; set +a; \
+	@set -a; if [ -f ./.env ]; then . ./.env; fi; set +a; \
+	  DB_NAME="$${DB_NAME:-page_history}"; \
 	  url="$(TEST_DATABASE_URL)"; \
 	  if [ -z "$$url" ]; then \
 	    url="postgresql+psycopg://$$DB_USER:$$DB_PASSWORD@$$DB_HOST:$$DB_PORT/$${DB_NAME}_test"; \
@@ -88,7 +92,7 @@ test-pg:  ## Postgres suite against <DB_NAME>_test (creates and drops tables the
 	      echo "This suite creates and drops tables. Use a scratch one."; \
 	      exit 1;; \
 	  esac; \
-	  echo "running against $${DB_NAME}_test"; \
+	  target="$${url##*/}"; echo "running against $${target%%\?*}"; \
 	  cd apps/api && TEST_DATABASE_URL="$$url" uv run pytest -m postgres -q
 
 # --- api --------------------------------------------------------------------
@@ -146,10 +150,14 @@ schema-drop:  ## DESTRUCTIVE. Drop every schema object: make schema-drop CONFIRM
 	@echo "Dropped, including alembic_version -- without that, alembic would still think"
 	@echo "0001 was applied and 'make migrate' would be a silent no-op. Run it now."
 
-db-bootstrap:  ## Install the pgvector extension (needs a superuser, once per database)
-	@echo "Running db/schema/bootstrap.sql as the superuser role."
+# Once per database, and the test database counts: `make db-bootstrap DB=page_history_test`.
+# Revision 0002 names the exact command, database included, when the extension is missing.
+DB ?= $(DB_NAME)
+
+db-bootstrap:  ## Install the pgvector extension (superuser, once per database): [DB=name]
+	@echo "Running db/schema/bootstrap.sql in $(DB) as the superuser role."
 	@echo "pgvector is not a trusted extension, so the application role cannot do this."
-	psql "postgresql://$(PG_SUPERUSER)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)" \
+	psql "postgresql://$(PG_SUPERUSER)@$(DB_HOST):$(DB_PORT)/$(DB)" \
 	  -v ON_ERROR_STOP=1 -f db/schema/bootstrap.sql
 
 db-doctor:  ## Show which database the settings actually reach, and what is in it

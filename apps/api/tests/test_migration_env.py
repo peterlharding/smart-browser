@@ -331,11 +331,13 @@ def test_the_missing_extension_message_names_the_command_that_fixes_it():
     """
     module = _revision_0002()
 
-    installed_elsewhere = module.pgvector_message("0.8.5")
+    installed_elsewhere = module.pgvector_message("0.8.5", "page_history_test")
     assert "0.8.5" in installed_elsewhere
-    assert "make db-bootstrap" in installed_elsewhere
     assert "superuser" in installed_elsewhere
+    # The database, not just the command: the extension is per database, and a bare
+    # `make db-bootstrap` fixes the default one while `make test-pg` keeps failing.
+    assert "make db-bootstrap DB=page_history_test" in installed_elsewhere
 
-    not_there_at_all = module.pgvector_message(None)
+    not_there_at_all = module.pgvector_message(None, "page_history_test")
     assert "pgvector/pgvector" in not_there_at_all, "say which image ships it"
-    assert "db-bootstrap" in not_there_at_all
+    assert "make db-bootstrap DB=page_history_test" in not_there_at_all

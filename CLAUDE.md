@@ -32,6 +32,7 @@ make test-pg        # Postgres suite; derives its own URL from .env
 make api-lint       # ruff + mypy
 make migrate        # alembic upgrade head
 make db-bootstrap   # CREATE EXTENSION vector, as a superuser; once per database
+                    # and the test one too: make db-bootstrap DB=page_history_test
 make db-doctor      # which database, as whom, which revision, which tables
 make schema-drop CONFIRM=yes
 ```

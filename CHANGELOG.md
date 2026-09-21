@@ -11,6 +11,23 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **CI had failed on every push, and neither job reached its tests.** The `check` job
+  passed `UV="uv --project apps/api --frozen"`, which put `--frozen` in front of `sync`,
+  where uv does not accept it. `UV_FROZEN=1` now covers every uv command in the run,
+  including the `uv run` calls inside make targets, which the flag never reached anyway.
+  The `postgres` job sourced a `.env` that CI does not have. Behind that, it ran
+  `postgres:16`, which has no pgvector, so revision `0002` could never have migrated
+  there. It now runs `pgvector/pgvector:pg18`, matching the real server, and installs the
+  extension from `db/schema/bootstrap.sql` before the suite. The actions are bumped to
+  their node24 majors.
+- **`make test-pg` failed locally from the moment `0002` landed.** `make db-bootstrap`
+  only ever reached `DB_NAME`, never `<DB_NAME>_test`. It now takes `DB=`, and the
+  migration's missing-extension message names the database, so the remedy it prints is
+  `make db-bootstrap DB=page_history_test` rather than a command that fixes a different
+  database. `test-pg` no longer requires `.env`, and when `DB_NAME` is unset it falls back
+  to the same default as `config.py`, so the real-database refusal still has something
+  to compare against.
+
 - **The extension could never reach the API.** `BookmarksApi` held `globalThis.fetch` in
   a field and called it as `this.fetch(...)`, so the receiver was the client object
   rather than the window; Chrome throws `Illegal invocation` for that, and every request

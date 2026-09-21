@@ -180,9 +180,13 @@ builds the schema the models describe, and that `UNIQUE (url_hash)` is what reje
 duplicate rather than the application being careful.
 
 ```sh
-createdb page_history_test -O api    # once
+createdb page_history_test -O api                     # once
+make -C ../.. db-bootstrap DB=page_history_test       # once: pgvector, as a superuser
 make -C ../.. test-pg
 ```
+
+The extension is per database, so the test database needs its own bootstrap. Revision
+`0002` stops with that exact command if it is missing.
 
 `test-pg` builds the URL from `.env`, swapping `DB_NAME` for `<DB_NAME>_test`, and reads
 the password in the shell — so it never reaches your command line or your shell history.

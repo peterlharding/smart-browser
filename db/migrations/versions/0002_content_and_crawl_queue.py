@@ -31,26 +31,31 @@ DROP_SCRIPT = SCHEMA_DIR / "drop" / "drop_content.sql"
 BOOTSTRAP = SCHEMA_DIR / "bootstrap.sql"
 
 
-def pgvector_message(available: str | None) -> str:
+def pgvector_message(available: str | None, database: str) -> str:
     """What to tell someone whose database has no `vector` extension.
+
+    *database* is named in the remedy because the extension is per database: the test
+    database needs its own bootstrap, and "run make db-bootstrap" against the default one
+    would leave a failing `make test-pg` exactly where it was.
 
     A separate function because the two branches are the whole value of the check and
     neither is reachable from a test without a superuser to take the extension away
-    again. This much is testable; the query above it is three lines.
+    again. This much is testable; the queries in require_pgvector are a few lines.
     """
     if available:
         return (
-            f"pgvector {available} is available in this server but not installed in this "
-            "database, and the migration role cannot install it: pgvector is not a "
-            "trusted extension, so CREATE EXTENSION requires a superuser.\n"
+            f"pgvector {available} is available in this server but not installed in "
+            f"database {database!r}, and the migration role cannot install it: pgvector "
+            "is not a trusted extension, so CREATE EXTENSION requires a superuser.\n"
             "Run it once, as postgres:\n"
-            "    make db-bootstrap\n"
+            f"    make db-bootstrap DB={database}\n"
             f"which applies {BOOTSTRAP}."
         )
     return (
         "pgvector is not available in this PostgreSQL server, so the embedding columns "
         "cannot be created. Use an image that ships it (pgvector/pgvector:pg18) or "
-        "install the extension package for this server, then run `make db-bootstrap`."
+        "install the extension package for this server, then run "
+        f"`make db-bootstrap DB={database}`."
     )
 
 
@@ -79,7 +84,8 @@ def require_pgvector() -> None:
     available = bind.execute(
         sa.text("SELECT default_version FROM pg_available_extensions WHERE name = 'vector'")
     ).scalar()
-    raise RuntimeError(pgvector_message(available))
+    database = bind.execute(sa.text("SELECT current_database()")).scalar_one()
+    raise RuntimeError(pgvector_message(available, database))
 
 
 def upgrade() -> None:
