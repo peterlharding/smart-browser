@@ -137,6 +137,22 @@ built app against the real API on the test database.
 Still to come in M5: the offline save queue, history, downloads, OAuth sign-in (with M1),
 packaging and signing, and auto-update. The tag sidebar is M6.
 
+**Possible enhancements** (not scheduled):
+
+- **Say which API a rejected token was tried against.** Settings reports "Token rejected"
+  whenever `/tags` answers 403, but a mistyped port can reach another server that answers
+  like this API, and the message then blames the token for a wrong address (seen
+  2026-09-21: Settings pointed at 8080 when `make api-dev` had moved to `API_PORT`, 8085,
+  and something on 8080 answered `/health` and refused the token). `/health` needs no token and has already answered by then, so the message
+  could name what it reached: "Reached API 0.x.y at `http://127.0.0.1:NNNN`, but it
+  rejected this token".
+- **Stop answering "not saved" with a 404.** `GET /bookmarks/lookup` returns 404 for a
+  page you have not saved, a normal answer that fills the API's log with `404 Not Found`
+  lines for every page browsed (seen 2026-09-21). A 200 with an empty body, or a
+  `{"saved": false}` shape, would read as what it is. It changes a response both clients
+  depend on, so it is a contract version bump (ADR 0005, ADR 0008), best made alongside
+  another change that needs one.
+
 ---
 
 ## Open questions
