@@ -9,6 +9,14 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Documentation
+
+- **`RELEASING.md` tags only after CI passes.** The steps had tagged and pushed the commit
+  and the tag together, so 0.2.0's tag went out before CI failed on its commit. Push the
+  release commit, wait for CI on it, then tag that exact commit; a tag on a bad commit is
+  left alone and the next patch released, and a release body carries the notes of a
+  version that was tagged but never published.
+
 ## [0.2.1] - 2026-09-21
 
 See [release_notes/v0.2.1.md](release_notes/v0.2.1.md) for details.

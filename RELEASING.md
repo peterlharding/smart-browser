@@ -119,29 +119,46 @@ release cannot be cut with an API that reports the wrong version.
    git commit -m "Release <version>"
    ```
 
-8. **Tag** the release with an annotated tag:
-
-   ```sh
-   git tag -a v<version> -m "Smart-Browser <version>"
-   ```
-
-9. **Push** the commit and the tag:
+8. **Push the commit, not the tag**, and wait for CI to pass on it:
 
    ```sh
    git push origin main
+   gh run watch --exit-status \
+     "$(gh run list --commit "$(git rev-parse HEAD)" -L 1 --json databaseId --jq '.[0].databaseId')"
+   ```
+
+   A tag is a claim that this commit is the release, and a pushed tag should never move.
+   So it goes on only after CI has passed on exactly that commit.
+   0.2.0 shows why: it was tagged and pushed together, CI then failed on the release commit, and 0.2.1 had to be cut to carry a one-line fix.
+
+   If CI fails here, the release commit is on `main` but nothing claims it.
+   Fix forward in a new commit, cut the changelog and notes again if the fix belongs in the release, and repeat this step on the new commit.
+
+9. **Tag** the commit CI passed, with an annotated tag, and push the tag:
+
+   ```sh
+   git tag -a v<version> -m "Smart-Browser <version>" <commit>
    git push origin v<version>
    ```
+
+   Name the commit rather than tagging `HEAD`, so a commit made meanwhile cannot end up tagged by accident.
+   If a tag ever does go out on a bad commit, leave it where it is and release the next patch version, as 0.2.1 did; moving a published tag rewrites what anyone who fetched it already has.
 
 10. **(Optional) Publish a GitHub release** from the tag, using the matching release notes as the body:
 
     ```sh
     gh release create v<version> --title "Smart-Browser <version>" \
-      --notes-file release_notes/v<version>.md
+      --notes-file release_notes/v<version>.md --verify-tag
     ```
+
+    `--verify-tag` refuses to publish if the tag is not on GitHub, rather than creating one on whatever `main` is by then.
 
     Treat creating a release as a one-shot.
     If the repository has immutable releases enabled, a release cannot be amended, and deleting it leaves the tag name reserved, so it cannot be recreated.
     Get the notes right first.
+
+    If the previous version was tagged but never published, readers of this release have not seen its notes.
+    Publish the two files together, this release's first, with relative links made absolute: 0.2.1's release body carries 0.2.0's notes this way.
 
 ## Commit conventions
 
