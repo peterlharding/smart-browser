@@ -150,6 +150,26 @@ def _resolve_tag(db: Session, raw: str) -> Tag:
     return db.execute(select(Tag).where(Tag.name == name)).scalar_one()
 
 
+def _canonical(db: Session, names: list[str]) -> list[str]:
+    """Each name as the vocabulary spells it: an alias becomes the tag it resolves to.
+
+    Every path that reads tags by name goes through here, as the write path goes through
+    `_resolve_tag`, so `boorstrap` finds, removes and keeps what `bootstrap` does.
+    """
+    if not names:
+        return []
+    # .all(), not the result itself: dict() treats anything with .keys() as a mapping,
+    # and a SQLAlchemy result has one.
+    aliases = dict(
+        db.execute(
+            select(TagAlias.alias, Tag.name)
+            .join(Tag, Tag.id == TagAlias.tag_id)
+            .where(TagAlias.alias.in_(names))
+        ).tuples().all()
+    )
+    return list(dict.fromkeys(aliases.get(name, name) for name in names))
+
+
 def _attach_tags(db: Session, save: UserBookmark, names: list[str],
                  source: TagSource = TagSource.USER) -> None:
     for raw in names:
@@ -253,8 +273,8 @@ def list_bookmarks(
         .where(UserBookmark.user_id == user.id, UserBookmark.deleted_at.is_(None))
     )
 
-    wanted = [t.strip().lower() for t in tags.split(",")] if tags else []
-    wanted = [t for t in wanted if t]
+    typed = [t.strip().lower() for t in tags.split(",")] if tags else []
+    wanted = _canonical(db, [t for t in typed if t])
 
     def narrow(*clauses):
         nonlocal stmt, count_stmt
@@ -269,7 +289,7 @@ def list_bookmarks(
             .group_by(BookmarkTag.user_bookmark_id)
         )
         if mode == "all":
-            matching = matching.having(func.count(func.distinct(Tag.name)) == len(set(wanted)))
+            matching = matching.having(func.count(func.distinct(Tag.name)) == len(wanted))
         narrow(UserBookmark.id.in_(matching))
 
     if untagged:
@@ -347,7 +367,9 @@ def patch_bookmark(
         save.notes = payload.notes or None
 
     if payload.tags is not None:
-        wanted = {t.strip().lower() for t in payload.tags if t.strip()}
+        # Canonical names, so a tag named by its alias keeps its existing link -- and the
+        # link's source: re-adding it would turn an AI suggestion into your own choice.
+        wanted = set(_canonical(db, payload.tags))
         for link in list(save.tag_links):
             if link.tag.name not in wanted:
                 db.delete(link)
@@ -366,10 +388,12 @@ def add_tags(save_id: int, payload: TagsIn, db: DbDep, user: CurrentUser) -> Boo
     return _out(_load(db, user, save_id))
 
 
-@router.delete("/{save_id}/tags/{tag_name}", response_model=BookmarkOut)
+# `:path`, so a tag containing `/` (`ci/cd`) can be removed: the path is decoded before
+# routing, and a plain parameter stops at the first slash.
+@router.delete("/{save_id}/tags/{tag_name:path}", response_model=BookmarkOut)
 def remove_tag(save_id: int, tag_name: str, db: DbDep, user: CurrentUser) -> BookmarkOut:
     save = _load(db, user, save_id)
-    target = tag_name.strip().lower()
+    target = _canonical(db, [tag_name.strip().lower()])[0]
 
     removed = False
     for link in list(save.tag_links):

@@ -193,6 +193,26 @@ describe('failure reporting', () => {
     assert.equal(errorMessage(422, { detail: "Tag 'x' exceeds…" }), "Tag 'x' exceeds…");
   });
 
+  it('shows the first validation error, as the API sends them, for 422', () => {
+    const payload = {
+      detail: [
+        {
+          type: 'value_error',
+          loc: ['body', 'tags'],
+          msg: "Value error, tag 'a b': tag names cannot contain commas, whitespace or control characters",
+        },
+      ],
+    };
+    assert.equal(
+      errorMessage(422, payload),
+      "tag 'a b': tag names cannot contain commas, whitespace or control characters",
+    );
+  });
+
+  it('falls back to a plain message for a 422 it cannot read', () => {
+    assert.equal(errorMessage(422, { detail: [{}] }), 'The server could not accept that.');
+  });
+
   it('survives an error response with no JSON body', async () => {
     const { client } = api([{ status: 500, body: null }]);
     await assert.rejects(() => client.health(), (error) => error.status === 500);

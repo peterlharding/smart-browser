@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  activeFragment, completeFragment, MAX_TAG_LENGTH, parseTags, suggest, tooLong,
+  activeFragment, completeFragment, parseTags, suggest,
 } from '../src/lib/tags.js';
 
 describe('parseTags', () => {
@@ -30,14 +30,10 @@ describe('parseTags', () => {
   });
 });
 
-describe('tooLong', () => {
-  it('flags tags the varchar(32) column cannot hold', () => {
-    const long = 'x'.repeat(MAX_TAG_LENGTH + 1);
-    assert.deepEqual(tooLong(['python', long]), [long]);
-  });
-
-  it('accepts a tag of exactly the maximum length', () => {
-    assert.deepEqual(tooLong(['x'.repeat(MAX_TAG_LENGTH)]), []);
+describe('tag length', () => {
+  it('is not limited: the server stores any length (ADR 0006)', () => {
+    const long = 'x'.repeat(200);
+    assert.deepEqual(parseTags(`python ${long}`), ['python', long]);
   });
 });
 

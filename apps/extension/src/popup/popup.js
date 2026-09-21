@@ -17,7 +17,7 @@
 
 import { BookmarksApi, NotConfigured } from '../lib/api.js';
 import { loadSettings } from '../lib/settings.js';
-import { activeFragment, completeFragment, parseTags, suggest, tooLong } from '../lib/tags.js';
+import { activeFragment, completeFragment, parseTags, suggest } from '../lib/tags.js';
 
 const el = {
   state: document.getElementById('state'),
@@ -148,10 +148,6 @@ function onKeyDown(event) {
 
 async function onSave() {
   const tags = parseTags(el.input.value);
-  const overlong = tooLong(tags);
-  if (overlong.length) {
-    return fail(`Too long for the tag column (32 chars): ${overlong.join(', ')}`);
-  }
 
   el.save.disabled = true;
   hideMessage();

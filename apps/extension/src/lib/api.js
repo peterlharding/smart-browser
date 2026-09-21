@@ -132,9 +132,21 @@ export class BookmarksApi {
   }
 }
 
+/**
+ * The server's own explanation, if it gave one. A handler's refusal is a string; a
+ * request the schema rejected is a list of errors, of which the first is shown, without
+ * the "Value error, " prefix FastAPI puts on a validator's message.
+ */
+function detailOf(payload) {
+  const detail = payload?.detail;
+  if (typeof detail === 'string') return detail;
+  const first = Array.isArray(detail) ? detail[0]?.msg : null;
+  return typeof first === 'string' ? first.replace(/^Value error, /, '') : null;
+}
+
 /** Turn a status code into something worth reading in a 360px popup. */
 export function errorMessage(status, payload) {
-  const detail = typeof payload?.detail === 'string' ? payload.detail : null;
+  const detail = detailOf(payload);
   switch (status) {
     case 401:
       return 'No token sent. Check the extension options.';

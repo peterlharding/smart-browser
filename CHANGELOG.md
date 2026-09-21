@@ -9,6 +9,27 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tag names were not checked, and aliases resolved only when saving**
+  ([ADR 0014](doc/decisions/0014-tag-names.md)). Each of these was reproduced against a
+  running API first.
+  - `red,green` could be saved and never filtered on, since `?tags=` splits on commas;
+    names with spaces or tabs were saved too, though every client splits typed tags on
+    whitespace. A tag name now contains no comma, whitespace or control character, on
+    every write path, as a 422 naming the tag and the rule.
+  - `?tags=boorstrap` found nothing and `DELETE .../tags/boorstrap` was a 404, though
+    saving `boorstrap` stored `bootstrap`. Every path that names a tag resolves aliases,
+    and in a `mode=all` filter an alias and its tag count once.
+  - `PATCH` with an alias deleted the tag's link and re-added it as `source = user`,
+    turning an AI suggestion into the person's own choice. It compares canonical names
+    now, so the link and its source stay.
+  - A tag containing `/` could be saved and never removed: the delete route stopped at the
+    first slash. It matches the rest of the path now; the URL is unchanged.
+- **The extension refused tags over 32 characters**, the retired schema's limit, which the
+  server dropped in 0.2.0. And when a save is refused, the popup shows the server's own
+  message instead of "The server could not accept that."
+
 ## [0.3.0] - 2026-09-21
 
 See [release_notes/v0.3.0.md](release_notes/v0.3.0.md) for details.

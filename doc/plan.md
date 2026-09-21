@@ -176,5 +176,6 @@ ADR 0002 chose a global vocabulary. Adding a per-user private namespace later is
 | 2026-09-21 | URL normalisation merges only spellings of the same resource; http and https only | [ADR 0011](decisions/0011-conservative-url-normalisation.md) |
 | 2026-09-21 | Crawl worker: one page at a time, 10-minute lease, trafilatura, private addresses refused, robots.txt not consulted | [ADR 0012](decisions/0012-crawl-worker.md) |
 | 2026-09-21 | Embeddings through fastembed, one vector per page from its opening 512 tokens, in its own process | [ADR 0013](decisions/0013-embeddings.md) |
+| 2026-09-21 | Tag names: no comma, whitespace or control character, no length limit; aliases resolve on every path | [ADR 0014](decisions/0014-tag-names.md) |
 | 2026-09-21 | First end-to-end save: extension → API → Postgres, verified in Swagger | this plan, M0 |
 | 2026-09-20 | Schema on Alembic revisions; contract version separate from release version; compatibility enforced by checks, not numbers | [ADR 0005](decisions/0005-versioning-and-compatibility.md) |

@@ -7,9 +7,6 @@
  * typing. This is the point of typing.
  */
 
-/** The current `tag` column is varchar(32); the API rejects longer rather than truncating. */
-export const MAX_TAG_LENGTH = 32;
-
 /**
  * Split a free-text tag field into clean tag names.
  *
@@ -27,11 +24,6 @@ export function parseTags(input) {
     out.push(tag);
   }
   return out;
-}
-
-/** Tags too long for the column, so the popup can say so before the request is made. */
-export function tooLong(tags) {
-  return tags.filter((t) => t.length > MAX_TAG_LENGTH);
 }
 
 /**
