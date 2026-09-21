@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Smart-Browser Bookmarks",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Save the current tab with tags, straight into your bookmarks database.",
   "minimum_chrome_version": "116",
   "icons": {

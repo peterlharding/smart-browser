@@ -9,6 +9,10 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-21
+
+See [release_notes/v0.2.1.md](release_notes/v0.2.1.md) for details.
+
 ### Fixed
 
 - **0.2.0 was tagged with an OpenAPI contract that said 0.1.0.** The committed
@@ -364,6 +368,7 @@ First release. See [release_notes/v0.1.0.md](release_notes/v0.1.0.md) for detail
   enforced version across `package.json`, `pyproject.toml` and `__init__.py`, `make check`
   as the release gate, and a CI workflow running the same checks.
 
-[Unreleased]: https://github.com/peterlharding/smart-browser/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/peterlharding/smart-browser/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/peterlharding/smart-browser/releases/tag/v0.2.1
 [0.2.0]: https://github.com/peterlharding/smart-browser/releases/tag/v0.2.0
 [0.1.0]: https://github.com/peterlharding/smart-browser/releases/tag/v0.1.0
