@@ -9,6 +9,8 @@ from collections.abc import Iterator
 from functools import lru_cache
 
 from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -33,6 +35,16 @@ def get_engine() -> Engine:
 @lru_cache
 def get_sessionmaker() -> sessionmaker[Session]:
     return sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
+
+
+def dialect_insert(session: Session):
+    """`INSERT ... ON CONFLICT` for whichever backend *session* is bound to.
+
+    Postgres in production, SQLite in the default test suite; both spell the conflict
+    clause the same way through their own dialect's `insert`.
+    """
+    bind = session.get_bind()
+    return sqlite_insert if bind.dialect.name == "sqlite" else pg_insert
 
 
 def get_db() -> Iterator[Session]:

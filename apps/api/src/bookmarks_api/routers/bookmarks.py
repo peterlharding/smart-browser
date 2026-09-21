@@ -13,10 +13,9 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import Select, func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
 
+from ..db import dialect_insert as _insert
 from ..db import get_db
 from ..deps import CurrentUser, ViewingUser
 from ..models import (
@@ -24,6 +23,7 @@ from ..models import (
     Bookmark,
     BookmarkTag,
     CrawlJob,
+    JobState,
     Tag,
     TagAlias,
     TagSource,
@@ -38,11 +38,6 @@ DbDep = Annotated[Session, Depends(get_db)]
 
 
 # --- helpers -----------------------------------------------------------------
-
-
-def _insert(db: Session):
-    """`INSERT ... ON CONFLICT` for whichever backend is in play."""
-    return sqlite_insert if db.bind is not None and db.bind.dialect.name == "sqlite" else pg_insert
 
 
 def _out(save: UserBookmark) -> BookmarkOut:
@@ -115,17 +110,27 @@ def _enqueue_crawl(db: Session, bookmark: Bookmark) -> None:
     Nothing is queued for a page already fetched. `POST /bookmarks` is an upsert and
     usually finds an existing row, so enqueueing unconditionally would re-crawl the web
     every time you re-saved anything.
+
+    A job that *failed* is revived: a person saving the page again is the best evidence
+    there is that it is worth another try (ADR 0012). A job that is ready, running or done
+    is left exactly as it is -- a re-save while a worker holds the row would otherwise
+    reset its attempt count and hand a second worker the same page.
     """
     if bookmark.fetched_at is not None:
         return
 
+    insert = _insert(db)(CrawlJob).values(bookmark_id=bookmark.id)
     db.execute(
-        _insert(db)(CrawlJob)
-        .values(bookmark_id=bookmark.id)
-        # Already queued is not an error, and a job in flight must not be disturbed: a
-        # re-save while the worker holds the row would otherwise reset its attempt count
-        # and hand a second worker the same page.
-        .on_conflict_do_nothing(index_elements=[CrawlJob.bookmark_id])
+        insert.on_conflict_do_update(
+            index_elements=[CrawlJob.bookmark_id],
+            set_={
+                "state": JobState.READY,
+                "attempts": 0,
+                "next_attempt_at": func.now(),
+                "last_error": None,
+            },
+            where=CrawlJob.state == JobState.FAILED,
+        )
     )
 
 

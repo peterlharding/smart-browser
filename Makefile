@@ -46,7 +46,8 @@ help:  ## Show this help
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
         api-lint api-openapi test test-api test-scripts test-ext test-pg \
         migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
-        db-connect db-doctor db-bootstrap schema-drop rehash-urls
+        db-connect db-doctor db-bootstrap schema-drop rehash-urls \
+        worker crawl-backfill crawl-status
 
 
 # --- the release gate -------------------------------------------------------
@@ -117,6 +118,17 @@ api-openapi:  ## Regenerate the committed OpenAPI contract
 	     json.dumps(app.openapi(), indent=2) + chr(10))"
 	@echo "wrote packages/shared-types/openapi.json"
 	@git diff --stat packages/shared-types/openapi.json
+
+# --- the crawl worker (ADR 0012) --------------------------------------------
+
+worker:  ## Run the crawl worker until stopped: [ONCE=yes] to drain what is due and exit
+	cd apps/api && uv run python -m bookmarks_api.worker $(if $(filter yes,$(ONCE)),--once)
+
+crawl-backfill:  ## Queue every bookmark that has never been fetched
+	cd apps/api && uv run python -m bookmarks_api.worker backfill
+
+crawl-status:  ## Crawl jobs by state, and the latest errors
+	cd apps/api && uv run python -m bookmarks_api.worker status
 
 # db/ has its own project: the schema belongs to the project, not to one service, so
 # migrating it needs only alembic, sqlalchemy and psycopg -- not the API package.

@@ -35,6 +35,8 @@ make db-bootstrap   # CREATE EXTENSION vector, as a superuser; once per database
                     # and the test one too: make db-bootstrap DB=page_history_test
 make db-doctor      # which database, as whom, which revision, which tables
 make rehash-urls    # after any urlnorm.py change; CONFIRM=yes to apply
+make worker         # the crawl worker; ONCE=yes drains what is due and exits
+make crawl-status   # jobs by state, latest errors
 make schema-drop CONFIRM=yes
 ```
 
@@ -93,7 +95,8 @@ failure is not evidence.**
   for days and found real bugs the hour it first ran; run it before claiming a schema
   change works. The test role needs neither SUPERUSER nor CREATEDB, deliberately, and
   `test_the_schema_needs_no_special_privileges` holds the schema to that even when the
-  suite connects as a superuser, as CI does. Keep it first in its module.
+  suite connects as a superuser, as CI does. Keep it first in its module, and keep
+  `test_migration_pg.py` sorting before any other Postgres module.
 - **Extension** (`make test-ext`): `node --test`, no dependencies. Node's `fetch` does not
   check its receiver and Chrome's does, so the suite carries a stand-in that is as strict
   as the browser. Keep it that way.
@@ -118,10 +121,12 @@ say so — that is where most of this project's real defects have lived.
 ## Current state
 
 M0 is done and proven end-to-end. M3 is in progress: revision `0002` added
-`bookmark_content` and `crawl_job`, and the save path enqueues inside its own
-transaction (ADR 0009). **Next: the worker** — claim with `FOR UPDATE SKIP LOCKED`, fetch
-through an injected fetcher, extract, back off — plus a backfill for saves made before the
-queue existed. Embeddings come after, as a second pass over `embedding IS NULL`.
+`bookmark_content` and `crawl_job`, the save path enqueues inside its own transaction
+(ADR 0009), and the crawl worker drains it (ADR 0012): `make worker`, `make
+crawl-backfill`, `make crawl-status`. `fetch.py` is the only module that touches the
+network and the worker takes it as a parameter; `extract.py` is `trafilatura`. **Next:
+embeddings**, as a second pass over `bookmark_content WHERE embedding IS NULL`, so the
+model loads in one process and never in the fetch loop.
 
 Titles (ADR 0010, revision `0003`): `title_override` is what you typed (PATCH only),
 `user_bookmark.saved_title` is what the client saw (POST), `bookmark.title` is what the

@@ -21,11 +21,11 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from bookmarks_api.config import Settings, get_settings
+from bookmarks_api.config import ALEMBIC_INI, Settings, get_settings
 from bookmarks_api.db import Base, get_db
 from bookmarks_api.main import app
 
@@ -126,3 +126,40 @@ def pg_url() -> str:
     if not url:
         pytest.skip("TEST_DATABASE_URL not set")
     return url
+
+
+# --- Postgres: shared by every -m postgres module -----------------------------------
+
+
+def alembic_config(url: str):
+    from alembic.config import Config
+
+    # Load the shipped alembic.ini and override *only* the URL. Setting script_location
+    # here as well would mean the suite never exercises the shipped value -- which is how
+    # `script_location = migrations`, resolved against the working directory, stayed
+    # broken through a green test run.
+    cfg = Config(str(ALEMBIC_INI))
+    # The ini is read through configparser, where `%` starts an interpolation: a
+    # percent-encoded password or query option would otherwise raise before connecting.
+    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+    return cfg
+
+
+@pytest.fixture
+def migrated(pg_url):
+    """A database brought to head by Alembic, torn down afterwards."""
+    from alembic import command
+
+    engine = create_engine(pg_url)
+    cfg = alembic_config(pg_url)
+
+    command.upgrade(cfg, "head")
+    session = sessionmaker(bind=engine)()
+    try:
+        yield session, engine
+    finally:
+        session.close()
+        command.downgrade(cfg, "base")
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        engine.dispose()

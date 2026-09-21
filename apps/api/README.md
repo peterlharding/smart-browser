@@ -72,6 +72,7 @@ Both are gitignored. They hold a password — keep it that way.
 | `API_TOKENS` | `name:token` pairs, or a bare token |
 | `SINGLE_USER_ID` | The user a bare token acts as |
 | `SCHEMA_CHECK` | `false` bypasses the startup revision check. Not a default |
+| `CRAWL_ALLOW_PRIVATE` | `true` lets the crawl worker fetch loopback and private-network addresses. Default `false` (ADR 0012) |
 | `EMBEDDING_*` | M3; the dimension is a config value so it can be benchmarked |
 
 `API_TOKENS` takes `name:token` pairs, so more than one client can act as more than one
@@ -305,6 +306,9 @@ src/bookmarks_api/
 ├── schema_guard.py  refuses to start against a mismatched database
 ├── urlnorm.py       normalisation + hashing; the dedupe foundation (ADR 0011)
 ├── rehash.py        rekeys existing rows after a urlnorm change: make rehash-urls
+├── worker.py        the crawl worker: claim, fetch, record (ADR 0012): make worker
+├── fetch.py         the only network access; limits, redirects, private addresses
+├── extract.py       title, description and main text, via trafilatura
 └── routers/
 ```
 
@@ -319,8 +323,9 @@ Deliberate, and tracked in `doc/plan.md`:
 - **No sign-in.** A static API token maps to an `app_user` row created on first use. M1
   replaces that with OAuth through `user_identity`; every handler already takes an
   `AppUser`, so only `deps.py` changes.
-- **No content, no embeddings, no AI tags.** `bookmark_content` and `tag_centroid` arrive
-  at M3 with the crawler that fills them — they are the only tables needing pgvector.
+- **No embeddings, no AI tags yet.** The crawl worker fills `bookmark_content.text`; the
+  embedding pass over it is the next part of M3. PDFs and other non-HTML pages are
+  recorded as fetched but not extracted (ADR 0012).
 - **No data.** Nothing imports the predecessor's bookmarks (ADR 0007).
 - **`source` on tag links is stored but nothing sets it to `ai` yet.** The column exists so
   M4 needs no migration, and so the UI can distinguish suggestions from choices.

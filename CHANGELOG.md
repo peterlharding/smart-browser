@@ -261,6 +261,21 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Added
 
+- **The crawl worker** ([ADR 0012](doc/decisions/0012-crawl-worker.md)). `make worker`
+  drains `crawl_job` one page at a time: claim with `FOR UPDATE SKIP LOCKED` and a
+  ten-minute lease, fetch with no transaction open, record the outcome. It fills
+  `bookmark.title` (the lowest-ranked title, ADR 0010), `description`, `http_status`,
+  `fetched_at` and `bookmark_content.text`, extracted with `trafilatura` so the text is
+  the article rather than the navigation around it. Limits: 30 seconds, 5 redirects,
+  5 MB, one request per host per second, HTML only. Loopback, link-local and
+  private-network addresses are refused at every redirect unless `CRAWL_ALLOW_PRIVATE`.
+  4xx fails at once with the status kept; 429, 5xx and network errors retry after 1, 4,
+  16, 64 and 256 minutes, honouring `Retry-After` up to a day. `make crawl-backfill`
+  queues pages saved before the queue existed; `make crawl-status` shows jobs by state
+  and the latest errors.
+- **Re-saving a page whose crawl failed revives the job.** A job that is ready, running
+  or done is still left alone.
+
 - **M3, first half: content and the crawl queue** (revision `0002`). `bookmark_content`
   holds extracted text, a generated `tsvector` and a 384-dimension embedding, keyed by
   URL so ten people saving a page pay for one fetch. `crawl_job` is the queue: keyed by

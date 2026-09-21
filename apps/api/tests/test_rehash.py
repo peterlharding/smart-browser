@@ -97,5 +97,5 @@ def test_the_report_names_every_outcome(db):
 
     text = rehash.report(rehash.plan(db))
 
-    assert text.splitlines()[0] == "1 to change, 2 unchanged, 1 collisions, 1 invalid"
+    assert text.splitlines()[0] == "1 to change, 2 unchanged, 1 collision, 1 invalid"
     assert "merge by hand" in text

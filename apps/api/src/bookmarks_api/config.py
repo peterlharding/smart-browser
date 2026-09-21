@@ -76,6 +76,12 @@ class Settings(BaseSettings):
     # extension, without opening the API to the web.
     cors_origin_regex: str = r"^(chrome|moz)-extension://[a-z0-9-]+$"
 
+    # The crawler refuses loopback, link-local and private-network addresses, at every
+    # redirect. Every URL it fetches was chosen by a user, and on a server with more than
+    # one of them a crawler that fetches http://169.254.169.254/ on request is a way into
+    # the machine. True for a deployment that wants its intranet pages crawled (ADR 0012).
+    crawl_allow_private: bool = False
+
     # Embeddings (M2)
     embedding_backend: str = "local"
     embedding_model: str = "bge-small-en-v1.5"

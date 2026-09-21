@@ -110,9 +110,11 @@ def apply(db: Session, work: Plan) -> None:
 
 
 def report(work: Plan) -> str:
+    collisions = len(work.collisions)
     lines = [
         f"{len(work.changes)} to change, {work.unchanged} unchanged, "
-        f"{len(work.collisions)} collisions, {len(work.invalid)} invalid"
+        f"{collisions} {'collision' if collisions == 1 else 'collisions'}, "
+        f"{len(work.invalid)} invalid"
     ]
     for change in work.changes:
         lines.append(f"  change    {change.bookmark_id}: {change.old_url}  ->  {change.new_url}")
@@ -143,7 +145,8 @@ def main(argv: list[str] | None = None) -> int:
             print("\nNothing changed. Re-run with --confirm (make rehash-urls CONFIRM=yes).")
             return 0
         apply(db, work)
-        print(f"\nChanged {len(work.changes)} rows.")
+        changed = len(work.changes)
+        print(f"\nChanged {changed} {'row' if changed == 1 else 'rows'}.")
     return 0
 
 

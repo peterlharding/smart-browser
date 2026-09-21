@@ -12,11 +12,11 @@ Never point TEST_DATABASE_URL at a real database -- these tests create and drop 
 import pytest
 from sqlalchemy import create_engine, inspect, make_url, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import sessionmaker
 
 from bookmarks_api.config import ALEMBIC_INI
 from bookmarks_api.schema_guard import REQUIRED_SCHEMA_REVISION, current_revision, verify
 from bookmarks_api.urlnorm import url_hash
+from conftest import alembic_config
 
 pytestmark = pytest.mark.postgres
 
@@ -32,40 +32,6 @@ TABLES = [
 # search will be raw SQL over the GIN index. Listing it here keeps the diff strict about
 # everything else -- an unlisted difference is still a failure.
 SQL_ONLY = {("bookmark_content", "tsv")}
-
-
-def alembic_config(url: str):
-    from alembic.config import Config
-
-    # Load the shipped alembic.ini and override *only* the URL. Setting script_location
-    # here as well would mean the suite never exercises the shipped value -- which is how
-    # `script_location = migrations`, resolved against the working directory, stayed
-    # broken through a green test run.
-    cfg = Config(str(ALEMBIC_INI))
-    # The ini is read through configparser, where `%` starts an interpolation: a
-    # percent-encoded password or query option would otherwise raise before connecting.
-    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
-    return cfg
-
-
-@pytest.fixture
-def migrated(pg_url):
-    """A database brought to head by Alembic, torn down afterwards."""
-    from alembic import command
-
-    engine = create_engine(pg_url)
-    cfg = alembic_config(pg_url)
-
-    command.upgrade(cfg, "head")
-    session = sessionmaker(bind=engine)()
-    try:
-        yield session, engine
-    finally:
-        session.close()
-        command.downgrade(cfg, "base")
-        with engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
-        engine.dispose()
 
 
 # --- the application role is not a superuser --------------------------------
