@@ -39,15 +39,6 @@ help:  ## Show this help
 
 # -----------------------------------------------------------------------------
 
-venv:
-	uv venv .venv
-
-install:
-	uv pip install -r requirements.txt
-
-
-# -----------------------------------------------------------------------------
-
 .PHONY: help check version-check version-set lint-md api-install api-dev api-test \
         api-lint api-openapi test test-api test-scripts test-ext test-pg \
         migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
