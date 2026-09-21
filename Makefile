@@ -80,19 +80,20 @@ test-scripts:  ## Tests for the release tooling
 test-ext:  ## Extension suite (node --test, no dependencies)
 	node --test apps/extension/test/*.test.js
 
-test-pg:  ## Run the Postgres suite (needs TEST_DATABASE_URL; creates and drops tables)
-	@test -n "$(TEST_DATABASE_URL)" || \
-	  { echo "TEST_DATABASE_URL is not set."; \
-	    echo "It needs a scratch database -- this suite creates and drops tables:"; \
-	    echo "    createdb ${DB_NAME}_test -O ${DB_USER}"; \
-	    echo "    make test-pg TEST_DATABASE_URL=postgresql+psycopg://${DB_USER}:PASSWORD@${DB_HOST}:${DB_PORT}/${DB_NAME}_test"; \
-	    exit 1; }
-	@case "$(TEST_DATABASE_URL)" in \
-	  */${DB_NAME}|*/${DB_NAME}\?*) \
-	    echo "REFUSING: TEST_DATABASE_URL points at ${DB_NAME}, which is your real database."; \
-	    echo "This suite drops tables. Use a scratch database."; exit 1;; \
-	esac
-	cd apps/api && TEST_DATABASE_URL="$(TEST_DATABASE_URL)" uv run pytest -m postgres -q
+test-pg:  ## Postgres suite against <DB_NAME>_test (creates and drops tables there)
+	@set -a; . ./.env; set +a; \
+	  url="$(TEST_DATABASE_URL)"; \
+	  if [ -z "$$url" ]; then \
+	    url="postgresql+psycopg://$$DB_USER:$$DB_PASSWORD@$$DB_HOST:$$DB_PORT/$${DB_NAME}_test"; \
+	  fi; \
+	  case "$$url" in \
+	    */$$DB_NAME|*/$$DB_NAME\?*) \
+	      echo "REFUSING: that URL points at $$DB_NAME, your real database."; \
+	      echo "This suite creates and drops tables. Use a scratch one."; \
+	      exit 1;; \
+	  esac; \
+	  echo "running against $${DB_NAME}_test"; \
+	  cd apps/api && TEST_DATABASE_URL="$$url" uv run pytest -m postgres -q
 
 # --- api --------------------------------------------------------------------
 

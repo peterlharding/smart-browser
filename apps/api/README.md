@@ -180,12 +180,15 @@ builds the schema the models describe, and that `UNIQUE (url_hash)` is what reje
 duplicate rather than the application being careful.
 
 ```sh
-TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/page_history_test \
-  make -C ../.. test-pg
+createdb page_history_test -O api    # once
+make -C ../.. test-pg
 ```
 
-**Never point `TEST_DATABASE_URL` at a database you care about** — that suite creates and
-drops tables.
+`test-pg` builds the URL from `.env`, swapping `DB_NAME` for `<DB_NAME>_test`, and reads
+the password in the shell — so it never reaches your command line or your shell history.
+`TEST_DATABASE_URL` overrides it, and either way the target **refuses a URL pointing at
+the configured database**: this suite creates and drops tables, and checking only that the
+variable was set is not a guard.
 
 A suite that is skipped by default is a suite that rots, which is why the fast one is the
 default and the slow one is opt-in rather than conditional on an environment variable

@@ -80,11 +80,10 @@ release cannot be cut with an API that reports the wrong version.
    covers the id allocation and migration behaviour SQLite cannot:
 
    ```sh
-   TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/page_history_test \
-     make test-pg
+   make test-pg
    ```
 
-   Never point `TEST_DATABASE_URL` at the real bookmarks database — that suite creates and drops tables.
+   It runs against `<DB_NAME>_test`, built from `.env`, and refuses any URL pointing at the configured database — that suite creates and drops tables.
 
    Do not cut a release on a failing or flaky suite.
    Fix the test or the code first, even when the failure looks unrelated to what the release contains.
