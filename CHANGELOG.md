@@ -11,6 +11,29 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Fixed
 
+- **The extension could never reach the API.** `BookmarksApi` held `globalThis.fetch` in
+  a field and called it as `this.fetch(...)`, so the receiver was the client object
+  rather than the window; Chrome throws `Illegal invocation` for that, and every request
+  failed before it was sent. The default now wraps the call instead of holding the
+  function. Node's `fetch` does not check its receiver, which is why 41 passing tests
+  could not see it — the new test's stand-in is as strict as the browser.
+- The extension reports *why* a request failed. Every network failure arrived as
+  `Cannot reach <url>`, which cannot tell a stopped API from Chrome's local-network-access
+  restriction from a CORS refusal; it now carries the browser's own message.
+- **No CORS handling at all.** Every client of this API is a browser, and a missing header
+  there does not look like a server problem: the request arrives, the handler runs, the
+  log records a 200, and the browser discards the response. Extension origins are matched
+  by pattern, since an unpacked reload gets a new id; `CORS_ORIGINS` adds anything else.
+  No `allow_credentials` — auth is a bearer token, and credentials plus a permissive
+  origin rule is how a CORS policy becomes a vulnerability.
+- The Postgres schema-diff test required `CREATEDB`. It built the models into a second
+  *database*; it now builds them into a `models_mirror` schema of the same one, which
+  needs only what the database owner already has. It also leaked an engine on the
+  exception path, surfacing as a `ResourceWarning` promoted to a teardown error two tests
+  later. The diff now compares enum labels as well: `str()` on a reflected type uses the
+  generic dialect, where an enum renders as `VARCHAR(<longest label>)`, so it could not
+  tell an enum from a varchar of the same width.
+
 - **`make db-connect` printed the database password.** `DB_PASSWORD` was a make variable
   and the recipe was not silenced, so make echoed the line with the value already
   substituted — into the terminal, the scrollback, and any log. The password is no longer
@@ -151,6 +174,10 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Added
 
+- **Bearer auth is declared as a security scheme**, so `/api/v2/docs` has an Authorize
+  dialog and every protected operation shows a padlock. Reading the `Authorization`
+  header by hand left FastAPI nothing to put in the OpenAPI document, and the docs page
+  offered a bare header field instead — which invites `Bearer: <token>`, a 401.
 - **Chrome extension** (`apps/extension/`): MV3, with a save sheet that shows existing tags
   and offers autocomplete ranked by your own usage. `⌘⇧B` to tag and save, `⌘⇧S` to quick
   save. Opening the popup is a lookup, never a write.

@@ -9,7 +9,7 @@
 | # | Deliverable | Why here | Status |
 | --- | --- | --- | --- |
 | **M0** | Monorepo, API v2, clean schema, extension with tag-on-save, release process, CI | Tagging at the moment of saving is the product; everything else supports it | **done** |
-| **M1** | Identity: OAuth for Google and GitHub, token issue and rotation | API tokens are a stand-in; real sign-in replaces them | not started |
+| **M1** | Identity: OAuth for Google and GitHub, token issue and rotation | API tokens are a stand-in; real sign-in replaces them | **next** |
 | **M3** | Crawler: titles, text, embeddings. `bookmark_content`, pgvector | Nothing downstream works without extracted content | not started |
 | **M4** | AI categorization: suggestions on save, backfill, review queue for proposals | Tagging stops depending on you thinking of the tag | not started |
 | **M5** | Electron shell: tabs, omnibox, OAuth sign-in, save sheet | First point a browser beats Chrome plus the extension | not started |
@@ -51,7 +51,34 @@ work rather than ahead of it.
 - `⌘⇧S` quick-saves with no tagging, badging amber to mark the untagged save.
 - Options page with a connection test reporting API, contract and schema versions.
 
-**The database is empty.** Nothing brings data in; see ADR 0007.
+### Proven end-to-end — 2026-09-21
+
+Save from the extension with tags, through the API, into Postgres, read back through
+`/api/v2/docs`. Until this ran, M0 was *assembled*, not *working*: three faults stood
+between the two, and every one of them was invisible to a green suite.
+
+- **`API_TOKENS` was unset**, so the API refused every request with 503. That is the
+  intended failure — an unconfigured deployment should be inert rather than public — but
+  nothing in the setup path said so until a request hit it.
+- **The extension's `fetch` was called on the wrong receiver.** `globalThis.fetch` held
+  in a field and invoked as `this.fetch(...)` throws `Illegal invocation` in Chrome.
+  Node's `fetch` does not check, so 41 passing tests could not see it. The suite now
+  carries a stand-in as strict as the browser.
+- **The API had no CORS handling**, which a browser client reports as a network error
+  while the server log shows an ordinary 200.
+
+The lesson is the one from the Postgres suite, in a second form: *a test that cannot
+reach the failure is not evidence*. The first two faults lived in exactly the gap between
+what the suite exercises (Node, SQLite, an injected fetch) and what runs (Chrome, a real
+database, the browser's own fetch). Worth keeping in view for M5, where the Electron
+shell adds a third runtime with the same property.
+
+Also fixed on the way: `/api/v2/docs` had no Authorize dialog, because auth read the
+`Authorization` header by hand instead of declaring a security scheme — so the docs page
+offered a bare header field, which invites `Bearer: <token>` and a 401.
+
+**The database is no longer empty** — it holds what that first save put there. Nothing
+bulk-imports; see ADR 0007.
 
 ---
 
@@ -103,4 +130,5 @@ ADR 0002 chose a global vocabulary. Adding a per-user private namespace later is
 | 2026-09-20 | Clean schema; no v1 compatibility; `UNIQUE (url_hash)` enforces no-duplicates | [ADR 0006](decisions/0006-clean-schema.md) |
 | 2026-09-20 | Reads require a token: per-user data has no anonymous read | [ADR 0006](decisions/0006-clean-schema.md) |
 | 2026-09-20 | ~~One version for the monorepo~~ | [ADR 0004](decisions/0004-single-version-monorepo.md) — superseded |
+| 2026-09-21 | First end-to-end save: extension → API → Postgres, verified in Swagger | this plan, M0 |
 | 2026-09-20 | Schema on Alembic revisions; contract version separate from release version; compatibility enforced by checks, not numbers | [ADR 0005](decisions/0005-versioning-and-compatibility.md) |
