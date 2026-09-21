@@ -27,6 +27,19 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
   database. `test-pg` no longer requires `.env`, and when `DB_NAME` is unset it falls back
   to the same default as `config.py`, so the real-database refusal still has something
   to compare against.
+- **Nothing checked that the schema runs without a superuser**, though ADR 0009 and the
+  plan both rest on it. Every Postgres test connected as whoever `TEST_DATABASE_URL`
+  named: `postgres` in CI, and a local `api` that was itself a superuser. A migration
+  needing a privilege the real role lacks would have passed everywhere it was tested.
+  `test_the_schema_needs_no_special_privileges` migrates, writes a vector and queries by
+  distance, and downgrades, as a role with no SUPERUSER, CREATEDB or CREATEROLE. From a
+  superuser connection it creates that role and switches to it with `-c role=`, so the
+  tables are really created by and owned by it. From an ordinary connection it checks
+  that the connecting role holds none of those attributes. It is first in its module on
+  purpose: when it ran last, a superuser-only `CREATE EXTENSION` injected into a schema
+  file slipped past it, because an earlier superuser test had already installed the
+  extension. The alembic test config also escapes `%` now, which configparser would
+  otherwise read as interpolation in a percent-encoded URL.
 
 - **The extension could never reach the API.** `BookmarksApi` held `globalThis.fetch` in
   a field and called it as `this.fetch(...)`, so the receiver was the client object

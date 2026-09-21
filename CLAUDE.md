@@ -82,7 +82,9 @@ failure is not evidence.**
 - **Postgres** (`make test-pg`): opt-in, `-m postgres`. Covers what SQLite cannot —
   migrations, `GENERATED ALWAYS`, the schema diff, real unique violations. It sat unrun
   for days and found real bugs the hour it first ran; run it before claiming a schema
-  change works. The test role needs neither SUPERUSER nor CREATEDB, deliberately.
+  change works. The test role needs neither SUPERUSER nor CREATEDB, deliberately, and
+  `test_the_schema_needs_no_special_privileges` holds the schema to that even when the
+  suite connects as a superuser, as CI does. Keep it first in its module.
 - **Extension** (`make test-ext`): `node --test`, no dependencies. Node's `fetch` does not
   check its receiver and Chrome's does, so the suite carries a stand-in that is as strict
   as the browser. Keep it that way.

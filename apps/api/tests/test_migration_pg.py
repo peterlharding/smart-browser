@@ -10,7 +10,7 @@ Never point TEST_DATABASE_URL at a real database -- these tests create and drop 
 
 
 import pytest
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, make_url, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -42,7 +42,9 @@ def alembic_config(url: str):
     # `script_location = migrations`, resolved against the working directory, stayed
     # broken through a green test run.
     cfg = Config(str(ALEMBIC_INI))
-    cfg.set_main_option("sqlalchemy.url", url)
+    # The ini is read through configparser, where `%` starts an interpolation: a
+    # percent-encoded password or query option would otherwise raise before connecting.
+    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
     return cfg
 
 
@@ -60,6 +62,144 @@ def migrated(pg_url):
         yield session, engine
     finally:
         session.close()
+        command.downgrade(cfg, "base")
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        engine.dispose()
+
+
+# --- the application role is not a superuser --------------------------------
+#
+# First in the module, deliberately: pytest runs a module's tests in definition order, and
+# every test below connects as whoever TEST_DATABASE_URL names -- a superuser in CI. Once
+# one of them has run the migrations, anything the migrations leave behind outside the
+# tables they drop (an extension created with IF NOT EXISTS, say) is already there, and
+# this test would pass by finding it rather than by being allowed to create it. Moved
+# here after exactly that: a superuser-only CREATE EXTENSION slipped past it when it ran
+# last.
+
+LEAST_PRIVILEGED = "sb_least_privilege"
+
+
+def _drop_role(conn, role: str) -> None:
+    # DROP OWNED first: a role that still owns tables from an interrupted run cannot be
+    # dropped, and the next run would then fail on CREATE ROLE rather than on anything
+    # this test is about.
+    conn.execute(text(f"""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+                EXECUTE 'DROP OWNED BY {role}';
+                EXECUTE 'DROP ROLE {role}';
+            END IF;
+        END
+        $$
+    """))
+
+
+@pytest.fixture
+def least_privileged_url(pg_url):
+    """A URL whose connections act as a role with no special privileges.
+
+    A superuser connection -- CI's `postgres`, or any local role that happens to be one --
+    passes every privilege check, so a suite run through it cannot see a migration that
+    needs one. From a superuser, this creates a throwaway role holding exactly what an
+    application role holds (it may create objects in `public`, as the database owner may)
+    and has every connection switch to it with `-c role=`. Postgres then checks privileges
+    against that role, and the tables it creates are owned by it, as they would be by
+    `api`.
+
+    From a connection that is not a superuser there is nothing to switch to and nothing
+    to create a role with, and none is needed: that role *is* the deployment shape, and
+    the test checks its privileges instead of assuming them.
+    """
+    admin = create_engine(pg_url)
+    with admin.connect() as conn:
+        superuser = conn.execute(
+            text("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
+        ).scalar_one()
+    if not superuser:
+        admin.dispose()
+        yield pg_url
+        return
+
+    with admin.begin() as conn:
+        _drop_role(conn, LEAST_PRIVILEGED)
+        conn.execute(text(
+            f"CREATE ROLE {LEAST_PRIVILEGED} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
+            "NOREPLICATION NOBYPASSRLS"
+        ))
+        conn.execute(text(f"GRANT USAGE, CREATE ON SCHEMA public TO {LEAST_PRIVILEGED}"))
+
+    url = (
+        make_url(pg_url)
+        .update_query_dict({"options": f"-c role={LEAST_PRIVILEGED}"})
+        .render_as_string(hide_password=False)
+    )
+    try:
+        yield url
+    finally:
+        with admin.begin() as conn:
+            conn.execute(text(f"REVOKE ALL ON SCHEMA public FROM {LEAST_PRIVILEGED}"))
+            _drop_role(conn, LEAST_PRIVILEGED)
+        admin.dispose()
+
+
+def test_the_schema_needs_no_special_privileges(least_privileged_url):
+    """Migrate, use pgvector and tear down as a role that is not a superuser.
+
+    The claim this checks is in ADR 0009 and the plan: pgvector needs a superuser exactly
+    once, in `make db-bootstrap`, and everything after that runs as the application role.
+    Until this test, nothing checked it. Every other Postgres test connects as whoever
+    `TEST_DATABASE_URL` names, which is `postgres` in CI and was a superuser `api`
+    locally, so a migration needing a privilege the real role lacks would have passed
+    everywhere it was tested.
+    """
+    from alembic import command
+
+    engine = create_engine(least_privileged_url)
+    cfg = alembic_config(least_privileged_url)
+
+    with engine.connect() as conn:
+        role, is_super, createdb, createrole = conn.execute(text(
+            "SELECT rolname, rolsuper, rolcreatedb, rolcreaterole "
+            "FROM pg_roles WHERE rolname = current_user"
+        )).one()
+    assert not (is_super or createdb or createrole), (
+        f"{role!r} is SUPERUSER, CREATEDB or CREATEROLE, so this test proves nothing. "
+        "The application role needs none of them: see ADR 0009."
+    )
+
+    command.upgrade(cfg, "head")
+    try:
+        with engine.begin() as conn:
+            owners = set(conn.execute(
+                text("SELECT tableowner FROM pg_tables WHERE tablename = ANY(:t)"),
+                {"t": TABLES},
+            ).scalars())
+            assert owners == {role}, f"tables owned by {owners}, expected {role!r}"
+
+            # Past the migration, the extension is used, not administered: the vector
+            # type, the hnsw index and the distance operator all belong to PUBLIC.
+            bookmark_id = conn.execute(
+                text("INSERT INTO bookmark (url, url_hash) VALUES (:u, :h) RETURNING id"),
+                {"u": "https://example.com/", "h": url_hash("https://example.com/")},
+            ).scalar_one()
+            conn.execute(text("INSERT INTO crawl_job (bookmark_id) VALUES (:b)"),
+                         {"b": bookmark_id})
+            vector = "[" + ",".join(["0.1"] * 384) + "]"
+            conn.execute(
+                text("INSERT INTO bookmark_content (bookmark_id, text, embedding) "
+                     "VALUES (:b, 'hello world', CAST(:v AS vector))"),
+                {"b": bookmark_id, "v": vector},
+            )
+            nearest = conn.execute(
+                text("SELECT bookmark_id FROM bookmark_content "
+                     "ORDER BY embedding <=> CAST(:v AS vector) LIMIT 1"),
+                {"v": vector},
+            ).scalar_one()
+            assert nearest == bookmark_id
+    finally:
         command.downgrade(cfg, "base")
         with engine.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
@@ -413,3 +553,4 @@ def test_the_migration_survives_a_leftover_enum_type(pg_url, migrated):
 
     present = set(inspect(engine).get_table_names())
     assert set(TABLES) <= present, "upgrade must succeed over leftover types"
+
