@@ -22,6 +22,7 @@ import {
   type SettingsInput,
 } from '../shared/ipc';
 import { Api, ApiError } from './api';
+import { Lookups } from './lookups';
 import { resolveInput } from './omnibox';
 import { readSession, writeSession } from './session';
 import type { SettingsStore } from './settings';
@@ -44,6 +45,7 @@ export class Browser {
   private saved: SavedState = { kind: 'unknown' };
   private focusOmnibox = 0;
   private lookupSeq = 0;
+  private readonly lookups = new Lookups();
   private contractProblem: string | null = null;
   private sessionTimer: NodeJS.Timeout | null = null;
 
@@ -196,7 +198,12 @@ export class Browser {
   }
 
   reload(): void {
-    this.active()?.view.webContents.reload();
+    const tab = this.active();
+    if (!tab) return;
+    // Reloading is asking again, so it asks the API again too: the page may have been
+    // saved from somewhere else, the extension say, since the answer was kept.
+    this.lookups.forget(tab.url);
+    tab.view.webContents.reload();
   }
 
   stop(): void {
@@ -263,9 +270,14 @@ export class Browser {
     if (!tab || !/^https?:/i.test(tab.url)) return set({ kind: 'not-web' });
     if (!api) return set({ kind: 'unconfigured' });
     if (this.contractProblem) return set({ kind: 'unavailable', reason: this.contractProblem });
+    const url = tab.url;
     try {
-      const found = await api.lookup(tab.url);
-      set(found ? { kind: 'saved', tags: found.tags } : { kind: 'unsaved' });
+      set(
+        await this.lookups.lookup(url, async () => {
+          const found = await api.lookup(url);
+          return found ? { kind: 'saved', tags: found.tags } : { kind: 'unsaved' };
+        }),
+      );
     } catch (error) {
       set({ kind: 'unavailable', reason: messageOf(error) });
     }
@@ -275,6 +287,7 @@ export class Browser {
   private async checkContract(): Promise<void> {
     const api = this.api();
     this.contractProblem = null;
+    this.lookups.forget(); // new settings may name a different API, with different answers
     if (api) {
       try {
         const health = await api.health();
@@ -307,6 +320,7 @@ export class Browser {
         api.lookup(tab.url),
         api.tags().catch(() => []), // no vocabulary costs autocomplete, not saving
       ]);
+      this.lookups.remember(tab.url, bookmark ? { kind: 'saved', tags: bookmark.tags } : { kind: 'unsaved' });
       this.showOverlay({ ...base, bookmark, vocabulary, error: null });
     } catch (error) {
       this.showOverlay({ ...base, bookmark: null, vocabulary: [], error: messageOf(error) });
@@ -320,18 +334,22 @@ export class Browser {
     if (!api) return this.openSettings();
     try {
       const saved = await api.save({ url: tab.url, title: tab.title, tags: [] });
-      this.showSaved(saved);
+      this.showSaved(tab.url, saved);
     } catch (error) {
       this.saved = { kind: 'unavailable', reason: messageOf(error) };
       this.pushChrome();
     }
   }
 
-  private showSaved(bookmark: Bookmark): void {
+  /** What a save or a tag removal established about *url*, kept, and shown if it is open. */
+  private showSaved(url: string, bookmark: Bookmark): void {
+    const saved = { kind: 'saved' as const, tags: bookmark.tags };
+    this.lookups.remember(url, saved);
+    if (this.active()?.url !== url) return;
     // A lookup started before this save may still be in flight, and its answer ("not
     // saved") is now stale: moving the sequence on makes it discard itself.
     this.lookupSeq += 1;
-    this.saved = { kind: 'saved', tags: bookmark.tags };
+    this.saved = saved;
     this.pushChrome();
   }
 
@@ -376,7 +394,7 @@ export class Browser {
     try {
       const saved = await api.save({ url: sheet.url, title: sheet.title, tags });
       this.closeOverlay();
-      if (this.active()?.url === sheet.url) this.showSaved(saved);
+      this.showSaved(sheet.url, saved);
       return null;
     } catch (error) {
       return messageOf(error);
@@ -390,7 +408,7 @@ export class Browser {
     try {
       const updated = await api.removeTag(sheet.bookmark.id, tag);
       this.overlayState = { ...sheet, bookmark: updated };
-      if (this.active()?.url === sheet.url) this.showSaved(updated);
+      this.showSaved(sheet.url, updated);
       return updated;
     } catch (error) {
       return messageOf(error);

@@ -127,6 +127,23 @@ export class BrowserApp {
     });
   }
 
+  /**
+   * Count the lookups the app sends from now on: the API client calls the main process's
+   * global fetch, so wrapping it sees every request, as the API's access log would.
+   */
+  async countLookups(): Promise<() => Promise<number>> {
+    await this.app.evaluate(() => {
+      const g = globalThis as unknown as { fetch: typeof fetch; __lookups?: number; __realFetch?: typeof fetch };
+      g.__realFetch ??= g.fetch;
+      g.__lookups = 0;
+      g.fetch = (input, init) => {
+        if (String(input).includes('/bookmarks/lookup')) g.__lookups! += 1;
+        return g.__realFetch!(input, init);
+      };
+    });
+    return () => this.app.evaluate(() => (globalThis as unknown as { __lookups: number }).__lookups);
+  }
+
   async configure(apiUrl = API(), token = TOKEN()): Promise<void> {
     await this.menu('settings');
     const overlay = await this.overlay();

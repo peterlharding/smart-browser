@@ -11,6 +11,13 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Changed
 
+- **The browser asks the API about a page once, not on every step of its loading.** The
+  saved-state indicator looked the page up again on every navigation event and tab
+  switch, and a page that settles in stages raised several in a second: the API's log
+  showed one page looked up four times running. Answers are now kept per page for a
+  minute, a lookup already in flight is shared, and an anchor (`#top`) is the same page,
+  as the API treats it. Saves and tag removals update the kept answer, ⌘R asks again, and
+  new settings forget everything. An end-to-end test counts the requests the app sends.
 - **`make api-dev` listens where `.env` says**: `API_HOST` and `API_PORT`, which the
   Makefile already read and `make chk-env` printed, but the target ignored in favour of a
   hard-coded port 8000. It still defaults to `127.0.0.1:8000`, and both are now in

@@ -25,6 +25,17 @@ const PAGES: Record<string, string> = {
   ),
   '/second.html': page('Second page', '<h1>Second page</h1>'),
   '/untitled.html': page(null, '<p>No title here.</p>'),
+  // A page that settles in stages, as many real ones do: its own URL replaced twice and a
+  // hash set after load, each an in-page navigation the browser hears about, and none of
+  // them a different page.
+  '/stages.html': page(
+    'Stages',
+    '<h1>Stages</h1><script>' +
+      "history.replaceState({}, '', '/stages.html');" +
+      "history.replaceState({ ready: true }, '', '/stages.html');" +
+      "setTimeout(() => { location.hash = 'top'; }, 50);" +
+      '</script>',
+  ),
 };
 
 export function startSite(): Promise<{ server: Server; url: string }> {

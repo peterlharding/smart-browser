@@ -136,6 +136,26 @@ test('quick save keeps the page without asking for tags', async ({ smart }) => {
   expect((await lookup(url)).tags).toEqual([]);
 });
 
+test('a page is looked up once, not on every step of its loading', async ({ smart }) => {
+  await smart.configure();
+  const lookups = await smart.countLookups();
+  await smart.go(SITE('/stages.html'));
+  const save = smart.chrome().locator('.save');
+  await expect(save).toHaveAttribute('title', 'Save this page with tags (⌘⇧B)');
+  await (await smart.tab(SITE('/stages.html'))).waitForTimeout(300); // let the stages finish
+  expect(await lookups()).toBe(1);
+
+  // Switching away and back asks nothing new: the answer is a second old.
+  await smart.menu('new-tab');
+  await smart.menu('tab-1');
+  await expect(save).toHaveAttribute('title', 'Save this page with tags (⌘⇧B)');
+  expect(await lookups()).toBe(1);
+
+  // Reloading is asking again.
+  await smart.menu('reload');
+  await expect.poll(lookups).toBe(2);
+});
+
 test('a link that opens a window opens a tab beside its page instead', async ({ smart }) => {
   await smart.go(SITE('/links.html'));
   await smart.menu('new-tab');
