@@ -10,6 +10,7 @@ import { SettingsStore, type Secrets } from '../../src/main/settings';
 // Reversible and visibly not plaintext, so a test can tell the token was encrypted.
 const secrets = (available = true): Secrets => ({
   available: () => available,
+  describe: () => 'backend: basic_text',
   encrypt: (text) => Buffer.from(`enc:${[...text].reverse().join('')}`),
   decrypt: (data) => [...data.toString().replace(/^enc:/, '')].reverse().join(''),
 });
@@ -42,7 +43,9 @@ describe('SettingsStore', () => {
 
   it('refuses to keep a token where there is no secret store, rather than write it plain', () => {
     const store = new SettingsStore(file(), secrets(false));
-    expect(() => store.update({ apiUrl: 'x', token: 's3cret', searchEngine: 'duckduckgo' })).toThrow(/no secret store/);
+    expect(() => store.update({ apiUrl: 'x', token: 's3cret', searchEngine: 'duckduckgo' })).toThrow(
+      /no secret store \(backend: basic_text\)/,
+    );
     expect(store.hasToken).toBe(false);
   });
 

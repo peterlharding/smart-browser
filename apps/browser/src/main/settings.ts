@@ -14,6 +14,8 @@ import type { SearchEngine, SettingsInput } from '../shared/ipc';
 
 export interface Secrets {
   available(): boolean;
+  /** Which store the platform chose, for saying why none is available. */
+  describe(): string;
   encrypt(text: string): Buffer;
   decrypt(data: Buffer): string;
 }
@@ -74,7 +76,10 @@ export class SettingsStore {
       if (!token) {
         next.token = null;
       } else if (!this.secrets.available()) {
-        throw new Error('This system has no secret store, so the token cannot be kept safely.');
+        throw new Error(
+          `This system has no secret store (${this.secrets.describe()}), so the token ` +
+            'cannot be kept safely.',
+        );
       } else {
         next.token = this.secrets.encrypt(token).toString('base64');
       }

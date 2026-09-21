@@ -53,6 +53,9 @@ function openWindow(): void {
 
 const secrets: Secrets = {
   available: () => safeStorage.isEncryptionAvailable(),
+  // Linux has several possible stores, and "none available" is only useful with which.
+  describe: () =>
+    process.platform === 'linux' ? `backend: ${safeStorage.getSelectedStorageBackend()}` : process.platform,
   encrypt: (text) => safeStorage.encryptString(text),
   decrypt: (data) => safeStorage.decryptString(data),
 };
