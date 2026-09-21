@@ -95,6 +95,13 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ### Changed
 
+- **The API path is `/api/v1`, not `/api/v2`**, and `API_CONTRACT_VERSION` is `1`. The
+  `2` was inherited from the predecessor, where it meant something; here it named a v1
+  that never existed. One client, one constant and one generated contract file — the
+  cheapest this will ever be. History is not rewritten: entries under `0.1.0` and
+  `release_notes/` still say `/api/v2`, because that is what that release served. See
+  [ADR 0008](doc/decisions/0008-api-path-v1.md).
+
 - **Surrogate keys are `bigint GENERATED ALWAYS AS IDENTITY`**, replacing `SERIAL`
   integers. `ALWAYS` rather than `BY DEFAULT`: an explicit id written past the sequence
   leaves it behind the data, and the next generated value collides. The models mirror it

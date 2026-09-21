@@ -19,7 +19,7 @@ DbDep = Annotated[Session, Depends(get_db)]
 
 
 # A declared security scheme rather than a raw Authorization header. The behaviour is the
-# same either way; what it buys is the padlock and the Authorize dialog in /api/v2/docs,
+# same either way; what it buys is the padlock and the Authorize dialog in /api/v1/docs,
 # which FastAPI only renders for a dependency deriving from SecurityBase. Reading the
 # header by hand means everyone testing the API hand-types "Bearer <token>" into a header
 # field -- and gets a 401 for writing "Bearer: <token>", which is the same mistake the

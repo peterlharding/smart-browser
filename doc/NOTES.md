@@ -63,11 +63,14 @@ makes a large collection navigable rather than a feature to add at the end.
 duplicate, and a Chrome extension with a tag-on-save sheet. 145 tests across the API, the
 extension and the release tooling. CI, release process, seven ADRs.
 
-**The database is empty.** Nothing imports the old bookmarks; that is work for the other
-project (ADR 0007).
+**The database is no longer empty** — the first end-to-end save landed on 2026-09-21
+(extension → API → Postgres, read back through the docs page). Nothing bulk-imports the
+old bookmarks; that is work for the other project (ADR 0007).
 
-Next: M1 — identity, OAuth for Google and GitHub.
+Next: M3 — the crawler. M1 (OAuth) is deferred behind it: it replaces a bearer token that
+works, for one user, and it needs a deployment that can receive a callback. See
+`doc/plan.md`.
 
-Open questions in `doc/plan.md`: which LLM for categorization, where this deploys, whether
-tags should be hierarchical, and whether to rename `/api/v2` to `/api/v1` now that the `v2`
-is a fossil of the predecessor.
+Settled since: the API path is `/api/v1` (ADR 0008), and this runs locally for now.
+Open questions in `doc/plan.md`: which LLM for categorization, and whether tags should be
+hierarchical.

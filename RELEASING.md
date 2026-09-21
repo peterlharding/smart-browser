@@ -16,17 +16,17 @@ The project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html): `MA
 | Thing | Versioned by | Changes |
 | --- | --- | --- |
 | Release | semver in `package.json` | Every release |
-| API contract | `API_CONTRACT_VERSION` (the `v2` in `/api/v2`) | Only on a breaking change |
+| API contract | `API_CONTRACT_VERSION` (the `v1` in `/api/v1`) | Only on a breaking change |
 | Database schema | Alembic revisions (`0001`, `0002`, …) | Per migration; ordinal, never semver |
 
 The release version does **not** enforce compatibility — two checks do, and both run regardless of what the version says:
 
 - The API refuses to start when the database is not at `REQUIRED_SCHEMA_REVISION`.
-- The browser asserts `contract` from `/api/v2/health` at startup (from M5).
+- The browser asserts `contract` from `/api/v1/health` at startup (from M5).
 
 **When to split the release version:** the first time a browser build runs against an API deployment it did not ship with. Until then one version is simpler and costs nothing; after then it asserts something untrue.
 
-Until `1.0.0` the API contract is not stable. `/api/v2` is a path, not a promise.
+Until `1.0.0` the API contract is not stable. `/api/v1` is a path, not a promise.
 
 ## Where versions live
 
@@ -35,7 +35,7 @@ reason to agree with each other:
 
 - `version` in `package.json` — **canonical**, because that is what `npm version` writes.
 - `version` in `apps/api/pyproject.toml`.
-- `__version__` in `apps/api/src/bookmarks_api/__init__.py` — what `/api/v2/health` reports.
+- `__version__` in `apps/api/src/bookmarks_api/__init__.py` — what `/api/v1/health` reports.
 - `version` in `apps/browser/package.json` (from M5).
 - `CHANGELOG.md` at the repo root, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `release_notes/v<version>.md`, one user-facing file per release.

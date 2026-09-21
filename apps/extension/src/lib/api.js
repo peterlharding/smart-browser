@@ -48,7 +48,7 @@ export class BookmarksApi {
 
     let response;
     try {
-      response = await this.fetch(`${this.baseUrl}/api/v2${path}`, {
+      response = await this.fetch(`${this.baseUrl}/api/v1${path}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),

@@ -10,21 +10,21 @@ PAYLOAD = {"url": "https://example.com/a"}
 
 
 def test_write_without_token_is_rejected(client):
-    r = client.post("/api/v2/bookmarks", json=PAYLOAD)
+    r = client.post("/api/v1/bookmarks", json=PAYLOAD)
     assert r.status_code == status.HTTP_401_UNAUTHORIZED
     assert r.headers["WWW-Authenticate"] == "Bearer"
 
 
 def test_write_with_wrong_token_is_rejected(client):
     r = client.post(
-        "/api/v2/bookmarks", json=PAYLOAD, headers={"Authorization": "Bearer nope"}
+        "/api/v1/bookmarks", json=PAYLOAD, headers={"Authorization": "Bearer nope"}
     )
     assert r.status_code == status.HTTP_403_FORBIDDEN
 
 
 def test_write_with_non_bearer_scheme_is_rejected(client):
     r = client.post(
-        "/api/v2/bookmarks", json=PAYLOAD, headers={"Authorization": "Basic abc123"}
+        "/api/v1/bookmarks", json=PAYLOAD, headers={"Authorization": "Basic abc123"}
     )
     assert r.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -38,7 +38,7 @@ def test_a_colon_after_bearer_is_rejected(client, auth):
     """
     token = auth["Authorization"].split(" ", 1)[1]
     r = client.post(
-        "/api/v2/bookmarks", json=PAYLOAD, headers={"Authorization": f"Bearer: {token}"}
+        "/api/v1/bookmarks", json=PAYLOAD, headers={"Authorization": f"Bearer: {token}"}
     )
     assert r.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -69,7 +69,7 @@ def test_unconfigured_deployment_refuses_writes_rather_than_allowing_them(anon_c
     Failing *open* on a missing config is how write endpoints quietly end up exposed, so
     this asserts 503 specifically rather than merely 'not 200'.
     """
-    r = anon_client.post("/api/v2/bookmarks", json=PAYLOAD, headers=auth)
+    r = anon_client.post("/api/v1/bookmarks", json=PAYLOAD, headers=auth)
     assert r.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
 
@@ -79,24 +79,24 @@ def test_reads_require_a_token_too(client):
     "List the bookmarks" has no answer without knowing whose. A public read would either
     leak every library or silently return one arbitrary person's.
     """
-    assert client.get("/api/v2/bookmarks").status_code == status.HTTP_401_UNAUTHORIZED
-    assert client.get("/api/v2/tags").status_code == status.HTTP_401_UNAUTHORIZED
+    assert client.get("/api/v1/bookmarks").status_code == status.HTTP_401_UNAUTHORIZED
+    assert client.get("/api/v1/tags").status_code == status.HTTP_401_UNAUTHORIZED
     assert client.get(
-        "/api/v2/bookmarks/lookup", params={"url": "https://example.com/a"}
+        "/api/v1/bookmarks/lookup", params={"url": "https://example.com/a"}
     ).status_code == status.HTTP_401_UNAUTHORIZED
 
 
 def test_health_needs_no_token(client):
     """Liveness has to be checkable by things that hold no credential."""
-    assert client.get("/api/v2/health").status_code == status.HTTP_200_OK
+    assert client.get("/api/v1/health").status_code == status.HTTP_200_OK
 
 
 def test_two_tokens_are_two_users(client, auth, other_auth):
-    client.post("/api/v2/bookmarks", json={"url": "https://example.com/a"}, headers=auth)
-    assert client.get("/api/v2/bookmarks", headers=auth).json()["total"] == 1
-    assert client.get("/api/v2/bookmarks", headers=other_auth).json()["total"] == 0
+    client.post("/api/v1/bookmarks", json={"url": "https://example.com/a"}, headers=auth)
+    assert client.get("/api/v1/bookmarks", headers=auth).json()["total"] == 1
+    assert client.get("/api/v1/bookmarks", headers=other_auth).json()["total"] == 0
 
 
 def test_write_with_valid_token_succeeds(client, auth):
-    r = client.post("/api/v2/bookmarks", json=PAYLOAD, headers=auth)
+    r = client.post("/api/v1/bookmarks", json=PAYLOAD, headers=auth)
     assert r.status_code == status.HTTP_201_CREATED

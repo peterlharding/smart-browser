@@ -37,8 +37,8 @@ app = FastAPI(
         f"Tag-first bookmarks. Contract version {API_CONTRACT_VERSION}. "
         "See doc/architecture.md."
     ),
-    docs_url="/api/v2/docs",
-    openapi_url="/api/v2/openapi.json",
+    docs_url="/api/v1/docs",
+    openapi_url="/api/v1/openapi.json",
     lifespan=lifespan,
 )
 
@@ -58,6 +58,6 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-app.include_router(health.router, prefix="/api/v2")
-app.include_router(bookmarks.router, prefix="/api/v2")
-app.include_router(tags.router, prefix="/api/v2")
+app.include_router(health.router, prefix="/api/v1")
+app.include_router(bookmarks.router, prefix="/api/v1")
+app.include_router(tags.router, prefix="/api/v1")

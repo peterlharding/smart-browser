@@ -2,18 +2,18 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Smart-Browser Bookmarks API",
-    "description": "Tag-first bookmarks. Contract version 2. See doc/architecture.md.",
+    "description": "Tag-first bookmarks. Contract version 1. See doc/architecture.md.",
     "version": "0.1.0"
   },
   "paths": {
-    "/api/v2/health": {
+    "/api/v1/health": {
       "get": {
         "tags": [
           "meta"
         ],
         "summary": "Health",
         "description": "Liveness plus the two numbers a client needs to check compatibility.",
-        "operationId": "health_api_v2_health_get",
+        "operationId": "health_api_v1_health_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -28,14 +28,14 @@
         }
       }
     },
-    "/api/v2/bookmarks": {
+    "/api/v1/bookmarks": {
       "post": {
         "tags": [
           "bookmarks"
         ],
         "summary": "Save Bookmark",
         "description": "Save a page.\n\n201 the first time, 200 every time after, never a second row \u2014 whatever the spelling\nof the URL and however many clients call at once. Tags in the payload are merged on\nevery call, so re-saving with new tags adds them rather than failing.",
-        "operationId": "save_bookmark_api_v2_bookmarks_post",
+        "operationId": "save_bookmark_api_v1_bookmarks_post",
         "security": [
           {
             "API token": []
@@ -80,7 +80,7 @@
         ],
         "summary": "List Bookmarks",
         "description": "List your saves.\n\n`mode=all` is the intersection the tag sidebar is built on \u2014 `python` AND `fastapi`.\n`untagged=true` is how you work the backlog.",
-        "operationId": "list_bookmarks_api_v2_bookmarks_get",
+        "operationId": "list_bookmarks_api_v1_bookmarks_get",
         "security": [
           {
             "API token": []
@@ -213,14 +213,14 @@
         }
       }
     },
-    "/api/v2/bookmarks/lookup": {
+    "/api/v1/bookmarks/lookup": {
       "get": {
         "tags": [
           "bookmarks"
         ],
         "summary": "Lookup Bookmark",
         "description": "Have I saved this page, and with what tags?\n\nA read. `POST /bookmarks` is idempotent and would answer the same question, but it is\na write: a client calling it merely to ask would create a bookmark every time someone\nopened a popup. 404 means not saved, which is a normal answer here.",
-        "operationId": "lookup_bookmark_api_v2_bookmarks_lookup_get",
+        "operationId": "lookup_bookmark_api_v1_bookmarks_lookup_get",
         "security": [
           {
             "API token": []
@@ -262,13 +262,13 @@
         }
       }
     },
-    "/api/v2/bookmarks/{save_id}": {
+    "/api/v1/bookmarks/{save_id}": {
       "get": {
         "tags": [
           "bookmarks"
         ],
         "summary": "Get Bookmark",
-        "operationId": "get_bookmark_api_v2_bookmarks__save_id__get",
+        "operationId": "get_bookmark_api_v1_bookmarks__save_id__get",
         "security": [
           {
             "API token": []
@@ -313,7 +313,7 @@
           "bookmarks"
         ],
         "summary": "Patch Bookmark",
-        "operationId": "patch_bookmark_api_v2_bookmarks__save_id__patch",
+        "operationId": "patch_bookmark_api_v1_bookmarks__save_id__patch",
         "security": [
           {
             "API token": []
@@ -369,7 +369,7 @@
         ],
         "summary": "Delete Bookmark",
         "description": "Unsave a page.\n\nA soft delete of *your* save. The `bookmark` row and anything crawled for it survive,\nbecause they belong to everyone; and re-saving the page restores this row rather than\ncreating a second one.",
-        "operationId": "delete_bookmark_api_v2_bookmarks__save_id__delete",
+        "operationId": "delete_bookmark_api_v1_bookmarks__save_id__delete",
         "security": [
           {
             "API token": []
@@ -403,13 +403,13 @@
         }
       }
     },
-    "/api/v2/bookmarks/{save_id}/tags": {
+    "/api/v1/bookmarks/{save_id}/tags": {
       "post": {
         "tags": [
           "bookmarks"
         ],
         "summary": "Add Tags",
-        "operationId": "add_tags_api_v2_bookmarks__save_id__tags_post",
+        "operationId": "add_tags_api_v1_bookmarks__save_id__tags_post",
         "security": [
           {
             "API token": []
@@ -460,13 +460,13 @@
         }
       }
     },
-    "/api/v2/bookmarks/{save_id}/tags/{tag_name}": {
+    "/api/v1/bookmarks/{save_id}/tags/{tag_name}": {
       "delete": {
         "tags": [
           "bookmarks"
         ],
         "summary": "Remove Tag",
-        "operationId": "remove_tag_api_v2_bookmarks__save_id__tags__tag_name__delete",
+        "operationId": "remove_tag_api_v1_bookmarks__save_id__tags__tag_name__delete",
         "security": [
           {
             "API token": []
@@ -516,14 +516,14 @@
         }
       }
     },
-    "/api/v2/tags": {
+    "/api/v1/tags": {
       "get": {
         "tags": [
           "tags"
         ],
         "summary": "List Tags",
         "description": "Your tags, with how often you have used them.\n\nThe vocabulary is global (ADR 0002) but the counts are yours: what belongs in an\nautocomplete list is how often *you* reach for a tag. Ranking by usage rather than\nalphabetically is what makes a 567-entry vocabulary usable at all.",
-        "operationId": "list_tags_api_v2_tags_get",
+        "operationId": "list_tags_api_v1_tags_get",
         "security": [
           {
             "API token": []
@@ -582,7 +582,7 @@
                   "items": {
                     "$ref": "#/components/schemas/TagOut"
                   },
-                  "title": "Response List Tags Api V2 Tags Get"
+                  "title": "Response List Tags Api V1 Tags Get"
                 }
               }
             }

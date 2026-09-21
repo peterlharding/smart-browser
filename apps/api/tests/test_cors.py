@@ -14,7 +14,7 @@ EXTENSION = "chrome-extension://abcdefghijklmnopabcdefghijklmnop"
 
 def test_preflight_from_an_extension_is_allowed(client):
     r = client.options(
-        "/api/v2/bookmarks",
+        "/api/v1/bookmarks",
         headers={
             "Origin": EXTENSION,
             "Access-Control-Request-Method": "POST",
@@ -32,7 +32,7 @@ def test_preflight_from_an_extension_is_allowed(client):
 
 def test_an_extension_may_read_the_response(client, auth):
     """The preflight passing is not the same as the response being readable."""
-    r = client.get("/api/v2/tags", headers={**auth, "Origin": EXTENSION})
+    r = client.get("/api/v1/tags", headers={**auth, "Origin": EXTENSION})
     assert r.status_code == status.HTTP_200_OK
     assert r.headers["access-control-allow-origin"] == EXTENSION
 
@@ -45,7 +45,7 @@ def test_the_open_web_is_not_allowed_in(client, auth):
     request the page asks for.
     """
     r = client.get(
-        "/api/v2/tags", headers={**auth, "Origin": "https://not-your-extension.example"}
+        "/api/v1/tags", headers={**auth, "Origin": "https://not-your-extension.example"}
     )
     assert "access-control-allow-origin" not in r.headers
 
@@ -56,5 +56,5 @@ def test_credentials_are_not_allowed(client, auth):
     `allow_credentials` together with a permissive origin rule is how a CORS policy turns
     into a vulnerability; this asserts the combination never appears.
     """
-    r = client.get("/api/v2/tags", headers={**auth, "Origin": EXTENSION})
+    r = client.get("/api/v1/tags", headers={**auth, "Origin": EXTENSION})
     assert "access-control-allow-credentials" not in r.headers

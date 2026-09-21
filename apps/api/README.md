@@ -1,6 +1,6 @@
 # bookmarks-api
 
-FastAPI service for Smart-Browser. The API is versioned in its path (`/api/v2`) so a
+FastAPI service for Smart-Browser. The API is versioned in its path (`/api/v1`) so a
 breaking change need not break installed clients — an extension updates on its own
 schedule, not the server's.
 
@@ -30,7 +30,7 @@ cp .env.example ../../.env            # or apps/api/.env; both are read
 
 make -C ../.. api-install             # uv sync
 make -C ../.. migrate                 # creates the schema
-make -C ../.. api-dev                 # http://127.0.0.1:8000/api/v2/docs
+make -C ../.. api-dev                 # http://127.0.0.1:8000/api/v1/docs
 ```
 
 Dependencies are managed with [uv](https://docs.astral.sh/uv/). `uv.lock` is committed and
@@ -285,7 +285,7 @@ cause.
 Adding a migration means bumping `REQUIRED_SCHEMA_REVISION`. A test asserts it equals the
 Alembic head, so forgetting fails the build rather than the deployment.
 
-**Browser → API.** `/api/v2/health` reports `contract` (which moves only on a breaking
+**Browser → API.** `/api/v1/health` reports `contract` (which moves only on a breaking
 change) separately from `version` (the release label, which moves every deploy). The
 browser asserts `contract` at startup from M5.
 

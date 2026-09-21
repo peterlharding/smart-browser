@@ -271,7 +271,7 @@ alternatives are in ADR [0003](decisions/0003-oauth-via-backend.md). The short v
 - One backend-mediated flow therefore covers both, and a third provider is backend-only work.
 
 ```text
-app → system browser → /api/v2/auth/{provider}/start
+app → system browser → /api/v1/auth/{provider}/start
                             ↓ PKCE S256 + state, stored server-side
                        provider consent
                             ↓
@@ -348,25 +348,25 @@ updates on its own schedule, not the server's. (On why it is `v2` and not `v1`, 
 open question in `plan.md`.)
 
 ```text
-POST   /api/v2/auth/{provider}/start                → 302 to provider (google | github)
-GET    /api/v2/auth/{provider}/callback             → 302 to loopback with one-time code
-POST   /api/v2/auth/exchange        {code}          → {access_token, refresh_token, user}
-POST   /api/v2/auth/refresh         {refresh_token} → rotated pair
-POST   /api/v2/auth/logout          {refresh_token} → 204, revokes the chain
-GET    /api/v2/me                                   → the signed-in user + linked identities
-POST   /api/v2/me/identities/{provider}             → link a second provider (signed in only)
+POST   /api/v1/auth/{provider}/start                → 302 to provider (google | github)
+GET    /api/v1/auth/{provider}/callback             → 302 to loopback with one-time code
+POST   /api/v1/auth/exchange        {code}          → {access_token, refresh_token, user}
+POST   /api/v1/auth/refresh         {refresh_token} → rotated pair
+POST   /api/v1/auth/logout          {refresh_token} → 204, revokes the chain
+GET    /api/v1/me                                   → the signed-in user + linked identities
+POST   /api/v1/me/identities/{provider}             → link a second provider (signed in only)
 
-POST   /api/v2/bookmarks            {url, title?, saved_from?, tags?[]}  → 200 existing | 201 created
-GET    /api/v2/bookmarks            ?tag=&tags=a,b&mode=all|any&site=&q=&since=&limit=&cursor=
-GET    /api/v2/bookmarks/{id}
-PATCH  /api/v2/bookmarks/{id}
-DELETE /api/v2/bookmarks/{id}       (soft)
-POST   /api/v2/bookmarks/{id}/tags  {tags:[...], source}
-DELETE /api/v2/bookmarks/{id}/tags/{tag}
-POST   /api/v2/bookmarks/{id}/suggest-tags          → {suggestions:[{tag,confidence}], proposed:[]}
-GET    /api/v2/tags                 ?q=&min_count=  → with usage counts
-POST   /api/v2/tags/{id}/merge      {into}          → the alias operation, exposed
-GET    /api/v2/search               ?q=  (full-text + vector, hybrid)
+POST   /api/v1/bookmarks            {url, title?, saved_from?, tags?[]}  → 200 existing | 201 created
+GET    /api/v1/bookmarks            ?tag=&tags=a,b&mode=all|any&site=&q=&since=&limit=&cursor=
+GET    /api/v1/bookmarks/{id}
+PATCH  /api/v1/bookmarks/{id}
+DELETE /api/v1/bookmarks/{id}       (soft)
+POST   /api/v1/bookmarks/{id}/tags  {tags:[...], source}
+DELETE /api/v1/bookmarks/{id}/tags/{tag}
+POST   /api/v1/bookmarks/{id}/suggest-tags          → {suggestions:[{tag,confidence}], proposed:[]}
+GET    /api/v1/tags                 ?q=&min_count=  → with usage counts
+POST   /api/v1/tags/{id}/merge      {into}          → the alias operation, exposed
+GET    /api/v1/search               ?q=  (full-text + vector, hybrid)
 ```
 
 Every bookmark route is scoped to the signed-in user. `GET /bookmarks` returns *your* saves;

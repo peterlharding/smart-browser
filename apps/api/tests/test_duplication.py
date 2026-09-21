@@ -10,7 +10,7 @@ from bookmarks_api.models import Bookmark, UserBookmark
 
 
 def post(client, auth, **payload):
-    return client.post("/api/v2/bookmarks", json=payload, headers=auth)
+    return client.post("/api/v1/bookmarks", json=payload, headers=auth)
 
 
 def test_saving_twenty_times_creates_one_row(client, auth, db):
@@ -19,7 +19,7 @@ def test_saving_twenty_times_creates_one_row(client, auth, db):
 
     assert db.query(Bookmark).count() == 1
     assert db.query(UserBookmark).count() == 1
-    assert client.get("/api/v2/bookmarks", headers=auth).json()["total"] == 1
+    assert client.get("/api/v1/bookmarks", headers=auth).json()["total"] == 1
 
 
 def test_first_save_is_201_and_the_rest_are_200(client, auth):
