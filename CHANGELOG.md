@@ -9,6 +9,10 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-22
+
+See [release_notes/v0.6.0.md](release_notes/v0.6.0.md) for details.
+
 ### Added
 
 - **Saves made while the API is away are kept and delivered later**
@@ -518,7 +522,8 @@ First release. See [release_notes/v0.1.0.md](release_notes/v0.1.0.md) for detail
   enforced version across `package.json`, `pyproject.toml` and `__init__.py`, `make check`
   as the release gate, and a CI workflow running the same checks.
 
-[Unreleased]: https://github.com/peterlharding/smart-browser/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/peterlharding/smart-browser/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/peterlharding/smart-browser/releases/tag/v0.6.0
 [0.5.0]: https://github.com/peterlharding/smart-browser/releases/tag/v0.5.0
 [0.4.0]: https://github.com/peterlharding/smart-browser/releases/tag/v0.4.0
 [0.3.0]: https://github.com/peterlharding/smart-browser/releases/tag/v0.3.0
