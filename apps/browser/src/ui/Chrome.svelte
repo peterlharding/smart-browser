@@ -27,6 +27,8 @@
   const shownUrl = $derived(active && active.url !== 'about:blank' ? active.url : '');
 
   smart.onBlur(() => omnibox?.blur());
+  // Back online: saves waiting for the API may go now (ADR 0017).
+  window.addEventListener('online', () => void smart.online());
 
   let lastFocus = 0;
   smart.onState((next) => {
@@ -75,6 +77,12 @@
         return saved.tags.length ? `Saved with ${saved.tags.join(', ')} (⌘⇧B)` : 'Saved, untagged (⌘⇧B)';
       case 'savable':
         return 'Save this page with tags (⌘⇧B)';
+      case 'waiting':
+        return saved.tags.length
+          ? `Saved here with ${saved.tags.join(', ')}, waiting for your bookmarks API (⌘⇧B)`
+          : 'Saved here, waiting for your bookmarks API (⌘⇧B)';
+      case 'refused':
+        return `Your bookmarks API refused this save: ${saved.reason} (⌘⇧B)`;
       case 'unconfigured':
         return 'Connect to your bookmarks API in Settings';
       case 'unavailable':
@@ -187,7 +195,8 @@
     <button
       class="icon save"
       class:saved={chrome.saved.kind === 'saved'}
-      class:problem={chrome.saved.kind === 'unavailable'}
+      class:waiting={chrome.saved.kind === 'waiting'}
+      class:problem={chrome.saved.kind === 'unavailable' || chrome.saved.kind === 'refused'}
       title={savedLabel(chrome.saved)}
       aria-label={savedLabel(chrome.saved)}
       disabled={chrome.saved.kind === 'not-web'}
@@ -196,7 +205,9 @@
       {#if chrome.saved.kind === 'saved'}
         {@html icons.bookmarkFilled}
         {#if chrome.saved.tags.length}<span class="count">{chrome.saved.tags.length}</span>{/if}
-      {:else if chrome.saved.kind === 'unavailable'}
+      {:else if chrome.saved.kind === 'waiting'}
+        {@html icons.bookmarkWaiting}
+      {:else if chrome.saved.kind === 'unavailable' || chrome.saved.kind === 'refused'}
         {@html icons.warning}
       {:else}
         {@html icons.bookmark}
@@ -420,6 +431,10 @@
   }
 
   .save.saved {
+    color: var(--saved);
+  }
+
+  .save.waiting {
     color: var(--saved);
   }
 

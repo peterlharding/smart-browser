@@ -2,6 +2,9 @@
   // The save sheet, ⌘⇧B: whether this page is saved and with which tags, autocomplete from
   // your own vocabulary ranked by use, and one keystroke to save. The tag rules are the
   // extension's own code, imported (ADR 0015).
+  //
+  // With the API away it still takes a save, which waits in the queue, and shows what this
+  // browser knows; a save the API refused comes back here to be fixed or dropped (ADR 0017).
 
   import { activeFragment, completeFragment, parseTags, suggest } from '@tagging';
 
@@ -18,15 +21,23 @@
   let bookmark = $state(sheet.bookmark);
   // svelte-ignore state_referenced_locally
   let error: string | null = $state(sheet.error);
-  let input = $state('');
+  // svelte-ignore state_referenced_locally
+  const pending = sheet.pending;
+  const refused = pending?.refused === true;
+  // A refused save's tags, to fix: they are the problem, so they are what you edit.
+  let input = $state(refused ? pending!.tags.join(' ') : '');
   let busy = $state(false);
   let field: HTMLInputElement | undefined = $state();
 
   const site = $derived(hostOf(sheet.url));
   const current = $derived(bookmark?.tags ?? []);
+  const known = $derived(sheet.offline ? (sheet.known ?? []) : []);
+  const waiting = $derived(
+    pending && !refused ? pending.tags.filter((t) => !current.includes(t) && !known.includes(t)) : [],
+  );
   const typed = $derived(parseTags(input));
   const matches = $derived(
-    suggest(sheet.vocabulary, activeFragment(input), { exclude: [...current, ...typed] }),
+    suggest(sheet.vocabulary, activeFragment(input), { exclude: [...current, ...known, ...waiting, ...typed] }),
   );
 
   $effect(() => {
@@ -53,6 +64,12 @@
     busy = false; // on success the sheet has already closed
   }
 
+  async function drop() {
+    if (!pending) return;
+    await smart.drop(pending.id);
+    await smart.close();
+  }
+
   async function remove(tag: string) {
     const result = await smart.removeTag(tag);
     if (typeof result === 'string') error = result;
@@ -71,9 +88,17 @@
 </script>
 
 <header>
-  <div class="state" class:saved={bookmark}>
-    {#if bookmark}
+  <div class="state" class:saved={bookmark || sheet.known} class:waiting={pending && !refused} class:refused>
+    {#if refused}
+      Refused
+    {:else if pending}
+      Waiting to save
+    {:else if bookmark}
       {bookmark.tags.length ? 'Saved' : 'Saved · untagged'}
+    {:else if sheet.offline && sheet.known}
+      {sheet.known.length ? 'Saved' : 'Saved · untagged'}
+    {:else if sheet.offline}
+      Not known offline
     {:else}
       Not saved yet
     {/if}
@@ -81,6 +106,31 @@
   <h1 title={sheet.url}>{sheet.title || sheet.url}</h1>
   <p class="site">{site}</p>
 </header>
+
+{#if sheet.offline}
+  <p class="notice" role="status">Can’t reach your bookmarks API. This page will be saved when it’s back.</p>
+{/if}
+{#if refused}
+  <p class="error" role="alert">
+    Your bookmarks API refused this save: {pending!.lastError}. Fix the tags and save again, or drop it.
+  </p>
+{/if}
+
+{#if known.length}
+  <ul class="chips current" aria-label="Tags on this page">
+    {#each known as tag (tag)}
+      <li><span class="chip fixed" title="Tags can be removed once your bookmarks API is back">{tag}</span></li>
+    {/each}
+  </ul>
+{/if}
+
+{#if waiting.length}
+  <ul class="chips current" aria-label="Tags waiting to be saved">
+    {#each waiting as tag (tag)}
+      <li><span class="chip fixed waiting" title="Waiting for your bookmarks API">{tag}</span></li>
+    {/each}
+  </ul>
+{/if}
 
 {#if current.length}
   <ul class="chips current" aria-label="Tags on this page">
@@ -98,7 +148,7 @@
   bind:this={field}
   bind:value={input}
   onkeydown={onKey}
-  placeholder={current.length ? 'Add more tags' : 'Add tags, separated by spaces'}
+  placeholder={current.length || known.length || waiting.length ? 'Add more tags' : 'Add tags, separated by spaces'}
   spellcheck="false"
   autocomplete="off"
   aria-label="Tags"
@@ -122,7 +172,14 @@
 
 <footer>
   <span class="hint">Enter to save · Tab takes a suggestion · Esc closes</span>
-  <button class="primary" disabled={busy} onclick={save}>{bookmark ? 'Add tags' : 'Save'}</button>
+  <span class="buttons">
+    {#if pending}
+      <button class="secondary" onclick={drop} title="Give up on the save still waiting">Drop</button>
+    {/if}
+    <button class="primary" disabled={busy} onclick={save}>
+      {refused ? 'Save again' : bookmark || known.length || pending ? 'Add tags' : 'Save'}
+    </button>
+  </span>
 </footer>
 
 <style>
@@ -141,9 +198,25 @@
     font-weight: 600;
   }
 
-  .state.saved {
+  .state.saved,
+  .state.waiting {
     background: var(--accent-soft);
     color: var(--accent);
+  }
+
+  .state.refused {
+    background: none;
+    color: var(--danger);
+    box-shadow: inset 0 0 0 1px currentColor;
+  }
+
+  .notice {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--chip);
+    color: var(--text-muted);
+    font-size: 12px;
   }
 
   h1 {
@@ -204,8 +277,18 @@
     font-size: 12px;
   }
 
-  .chip:hover {
+  .chip:hover:not(.fixed) {
     border-color: var(--text-muted);
+  }
+
+  .chip.fixed {
+    padding-right: 9px;
+  }
+
+  .chip.waiting {
+    border-style: dashed;
+    border-color: var(--accent);
+    background: none;
   }
 
   .x {
@@ -249,6 +332,21 @@
   .hint {
     color: var(--text-muted);
     font-size: 11px;
+  }
+
+  .buttons {
+    display: flex;
+    flex: none;
+    gap: 8px;
+  }
+
+  .secondary {
+    height: 30px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+    font-weight: 600;
   }
 
   .primary {

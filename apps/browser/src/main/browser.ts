@@ -22,6 +22,7 @@ import {
   type ChromeState,
   type ClearInput,
   type ConnectionReport,
+  type Delivery,
   type HistoryQuery,
   type HistoryResult,
   type HistoryView,
@@ -30,9 +31,11 @@ import {
   type SavedState,
   type SettingsInput,
 } from '../shared/ipc';
-import { Api, ApiError } from './api';
+import { Api, ApiError, isOffline } from './api';
+import type { Connection } from './connection';
 import type { History } from './history';
 import { resolveInput } from './omnibox';
+import type { SaveQueue } from './queue';
 import { readSession, writeSession } from './session';
 import type { SettingsStore } from './settings';
 import { Tab, lockToAppFiles, type Navigation, type TabEnvironment } from './tabs';
@@ -55,19 +58,20 @@ export class Browser {
   private overlayState: OverlayState | null = null;
   private readonly environment: TabEnvironment;
   private focusOmnibox = 0;
-  /** What the API's /health said of its contract, for the address it was asked at. */
-  private contract: { apiUrl: string; problem: string | null } | null = null;
   /** The last action on a page that failed, shown on the save button while it is open. */
   private problem: { page: string; reason: string } | null = null;
   private readonly favicons = new Map<string, Promise<string | null>>();
   private readonly stopListening: () => void;
   private historyTimer: NodeJS.Timeout | null = null;
   private sessionTimer: NodeJS.Timeout | null = null;
+  private disposed = false;
 
   constructor(
     private readonly settings: SettingsStore,
     private readonly paths: Paths,
     private readonly history: History,
+    private readonly connection: Connection,
+    private readonly queue: SaveQueue,
   ) {
     this.window = new BrowserWindow({
       width: 1280,
@@ -205,7 +209,7 @@ export class Browser {
     if (this.overlayState) this.closeOverlay();
     this.layout();
     if (tab.isBlank) this.focusOmnibox += 1;
-    else tab.view.webContents.focus();
+    else this.focusPage(tab);
     this.pushChrome();
     this.saveSessionSoon();
   }
@@ -246,12 +250,20 @@ export class Browser {
   }
 
   /**
-   * Give the page the keyboard. The omnibox is told to let go as well: a page opened from
-   * the menu into a new tab, whose omnibox was waiting to be typed in, would otherwise keep
-   * it editing an empty address over a page that has one.
+   * Give the page the keyboard. The omnibox lets go as well: a page opened from the menu
+   * into a new tab, whose omnibox was waiting to be typed in, would otherwise keep it
+   * editing an empty address over a page that has one.
    */
   private focusPage(tab: Tab): void {
     tab.view.webContents.focus();
+    this.releaseOmnibox();
+  }
+
+  /**
+   * The chrome hears of focus leaving it from the OS, which says nothing while the window
+   * is not the frontmost one, so whatever takes the keyboard also says so directly.
+   */
+  private releaseOmnibox(): void {
     if (!this.window.isDestroyed()) this.window.webContents.send(Channels.chrome.blur);
   }
 
@@ -316,49 +328,24 @@ export class Browser {
   private savedState(): SavedState {
     const tab = this.active();
     if (!tab || !isWeb(tab.url)) return { kind: 'not-web' };
-    if (!this.api()) return { kind: 'unconfigured' };
-    const contractProblem = this.contractProblem();
+    if (!this.connection.api()) return { kind: 'unconfigured' };
+    const contractProblem = this.connection.problem();
     if (contractProblem) return { kind: 'unavailable', reason: contractProblem };
+    const saved = this.history.savedTags(tab.url);
+    const pending = this.history.pendingFor(tab.url);
+    if (pending?.refused) return { kind: 'refused', reason: pending.lastError ?? 'The API refused this save.' };
+    if (pending) return { kind: 'waiting', tags: [...new Set([...(saved ?? []), ...pending.tags])] };
     if (this.problem?.page === pageKey(tab.url)) return { kind: 'unavailable', reason: this.problem.reason };
-    const tags = this.history.savedTags(tab.url);
-    return tags ? { kind: 'saved', tags } : { kind: 'savable' };
-  }
-
-  private api(): Api | null {
-    const token = this.settings.token();
-    if (!this.settings.apiUrl || !token) return null;
-    return new Api({ baseUrl: this.settings.apiUrl, token });
-  }
-
-  private contractProblem(): string | null {
-    return this.contract?.apiUrl === this.settings.apiUrl ? this.contract.problem : null;
+    return saved ? { kind: 'saved', tags: saved } : { kind: 'savable' };
   }
 
   /**
-   * The API, for an action you asked for: null when none is configured, or why it cannot be
-   * used. The first action in a session asks /health for its contract (ADR 0005); an API
-   * that does not answer is asked again next time, and the action says what went wrong.
+   * The API for an action you asked for (see Connection.connect). Any save still waiting
+   * goes too: an action is a moment the API is wanted, and may well be there (ADR 0017).
    */
   private async connect(): Promise<Api | string | null> {
-    const api = this.api();
-    if (!api) return null;
-    const apiUrl = this.settings.apiUrl;
-    if (this.contract?.apiUrl !== apiUrl) {
-      try {
-        const health = await api.health();
-        this.contract = {
-          apiUrl,
-          problem:
-            health.contract === API_CONTRACT_VERSION
-              ? null
-              : `The API speaks contract ${health.contract} and this browser speaks ` +
-                `${API_CONTRACT_VERSION}, so saving is off until one of them is updated.`,
-        };
-      } catch {
-        // Unreachable is reported by the request itself, where it can be retried.
-      }
-    }
-    return this.contractProblem() ?? api;
+    void this.queue.flush();
+    return this.connection.connect();
   }
 
   // --- saving --------------------------------------------------------------------------
@@ -369,7 +356,14 @@ export class Browser {
     const url = tab.url;
     const api = await this.connect();
     if (api === null) return this.openSettings();
-    const base = { mode: 'save' as const, url, title: tab.title };
+    const base = {
+      mode: 'save' as const,
+      url,
+      title: tab.title,
+      offline: false,
+      known: null,
+      pending: this.history.pendingFor(url),
+    };
     if (typeof api === 'string') {
       this.pushChrome();
       return this.showOverlay({ ...base, bookmark: null, vocabulary: [], error: api });
@@ -377,14 +371,28 @@ export class Browser {
     try {
       const [bookmark, vocabulary] = await Promise.all([
         api.lookup(url),
-        api.tags().catch(() => []), // no vocabulary costs autocomplete, not saving
+        api.tags().then(
+          (tags) => (this.history.keepVocabulary(tags), tags),
+          () => this.history.vocabulary(), // no vocabulary costs autocomplete, not saving
+        ),
       ]);
       // What the API said is now known here too: saved from the extension, or removed.
       if (bookmark) this.history.markSaved(url, bookmark.tags);
       else this.history.markUnsaved(url);
       this.showOverlay({ ...base, bookmark, vocabulary, error: null });
     } catch (error) {
-      this.showOverlay({ ...base, bookmark: null, vocabulary: [], error: messageOf(error) });
+      if (!isOffline(error)) {
+        return this.showOverlay({ ...base, bookmark: null, vocabulary: [], error: messageOf(error) });
+      }
+      // Away: the sheet still takes a save, with what is known here (ADR 0017).
+      this.showOverlay({
+        ...base,
+        bookmark: null,
+        vocabulary: this.history.vocabulary(),
+        error: null,
+        offline: true,
+        known: this.history.savedTags(url),
+      });
     }
   }
 
@@ -400,6 +408,11 @@ export class Browser {
       this.problem = null;
       this.history.markSaved(url, saved.tags);
     } catch (error) {
+      if (isOffline(error)) {
+        this.problem = null;
+        this.queue.add({ url, title: tab.title, tags: [] }, { failed: messageOf(error) });
+        return;
+      }
       this.problem = { page: pageKey(url), reason: messageOf(error) };
       this.pushChrome();
     }
@@ -417,12 +430,31 @@ export class Browser {
     });
   }
 
+  /** File > Saves Waiting: what is still to be delivered, to retry or drop. */
+  showWaiting(): void {
+    this.showOverlay({ mode: 'waiting', saves: this.history.pendingSaves() });
+  }
+
+  /** The system is back online: anything waiting may go now. */
+  online(): void {
+    void this.queue.flush();
+  }
+
+  retrySaves(id?: number): Promise<Delivery> {
+    return this.queue.retry(id);
+  }
+
+  dropSave(id: number): void {
+    this.queue.drop(id);
+  }
+
   private showOverlay(state: OverlayState): void {
     this.overlayState = state;
     this.layout();
     this.window.contentView.addChildView(this.overlay);
     this.overlay.webContents.send(Channels.overlay.state, state);
     this.overlay.webContents.focus();
+    this.releaseOmnibox();
   }
 
   closeOverlay(): void {
@@ -442,22 +474,31 @@ export class Browser {
 
   async saveFromSheet(tags: string[]): Promise<string | null> {
     const sheet = this.overlayState;
-    const api = this.api();
+    const api = this.connection.api();
     if (sheet?.mode !== 'save' || !api) return 'Nothing to save.';
+    // Saving a refused save again replaces its tags: the point is to fix them.
+    const replace = sheet.pending?.refused === true;
+    const queue = (failed?: string) => {
+      this.queue.add({ url: sheet.url, title: sheet.title, tags }, { replace, failed });
+      this.closeOverlay();
+      return null;
+    };
+    if (sheet.offline) return queue();
     try {
       const saved = await api.save({ url: sheet.url, title: sheet.title, tags });
+      if (replace && sheet.pending) this.queue.drop(sheet.pending.id); // fixed, and saved
       this.closeOverlay();
       this.problem = null;
       this.history.markSaved(sheet.url, saved.tags);
       return null;
     } catch (error) {
-      return messageOf(error);
+      return isOffline(error) ? queue(messageOf(error)) : messageOf(error);
     }
   }
 
   async removeTagFromSheet(tag: string): Promise<Bookmark | string> {
     const sheet = this.overlayState;
-    const api = this.api();
+    const api = this.connection.api();
     if (sheet?.mode !== 'save' || !sheet.bookmark || !api) return 'Nothing to remove from.';
     try {
       const updated = await api.removeTag(sheet.bookmark.id, tag);
@@ -465,17 +506,22 @@ export class Browser {
       this.history.markSaved(sheet.url, updated.tags);
       return updated;
     } catch (error) {
+      if (isOffline(error)) return 'Can’t reach your bookmarks API, so tags can’t be removed until it’s back.';
       return messageOf(error);
     }
   }
 
-  /** Kept, and nothing sent: the next action checks the API these settings name. */
+  /**
+   * Kept, and nothing sent for it. Saves waiting go to the API these settings name, at once:
+   * a corrected address is the likeliest reason they were waiting (ADR 0017).
+   */
   saveSettings(input: SettingsInput): void {
     this.settings.update(input);
-    this.contract = null;
+    this.connection.reset();
     this.problem = null;
     this.closeOverlay();
     this.pushChrome();
+    void this.queue.flush();
   }
 
   async testConnection(input: SettingsInput): Promise<ConnectionReport> {
@@ -560,6 +606,16 @@ export class Browser {
 
   private historyChanged(): void {
     this.pushChrome(); // a page saved here may be open in this window too
+    // The Saves Waiting card follows deliveries as they happen, and closes once none wait.
+    if (this.overlayState?.mode === 'waiting') {
+      const saves = this.history.pendingSaves();
+      if (saves.length) {
+        this.overlayState = { mode: 'waiting', saves, update: true };
+        this.overlay.webContents.send(Channels.overlay.state, this.overlayState);
+      } else {
+        this.closeOverlay();
+      }
+    }
     // The history pages follow, once a burst of changes (a page loading) has settled.
     if (this.historyTimer) clearTimeout(this.historyTimer);
     this.historyTimer = setTimeout(() => {
@@ -623,6 +679,7 @@ export class Browser {
   }
 
   private saveSessionSoon(): void {
+    if (this.disposed) return;
     if (this.sessionTimer) clearTimeout(this.sessionTimer);
     this.sessionTimer = setTimeout(() => this.saveSession(), 400);
   }
@@ -630,14 +687,22 @@ export class Browser {
   saveSession(): void {
     if (this.sessionTimer) clearTimeout(this.sessionTimer);
     this.sessionTimer = null;
+    if (this.disposed) return;
     const urls = this.tabs.map((t) => t.url);
     const active = Math.max(0, this.tabs.findIndex((t) => t.id === this.activeId));
     writeSession(this.paths.sessionFile, { urls, active });
   }
 
+  /**
+   * The window is gone, and its tabs with it. Nothing scheduled may run after this: a
+   * session save that fired late read a destroyed tab and threw, and Electron's error
+   * dialog then held the app open, so it never quit.
+   */
   private dispose(): void {
+    this.disposed = true;
     this.stopListening();
     if (this.historyTimer) clearTimeout(this.historyTimer);
+    if (this.sessionTimer) clearTimeout(this.sessionTimer);
     for (const tab of this.tabs) tab.destroy();
     this.overlay.webContents.close();
   }

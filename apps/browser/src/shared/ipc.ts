@@ -35,7 +35,27 @@ export type SavedState =
   | { kind: 'unconfigured' }
   | { kind: 'unavailable'; reason: string }
   | { kind: 'savable' }
-  | { kind: 'saved'; tags: string[] };
+  | { kind: 'saved'; tags: string[] }
+  /** Saved here while the API was away, not yet delivered (ADR 0017). */
+  | { kind: 'waiting'; tags: string[] }
+  /** Saved here, and refused by the API when it came back. */
+  | { kind: 'refused'; reason: string };
+
+/** A save made while the API was away, waiting to be delivered (ADR 0017). */
+export interface PendingSave {
+  id: number;
+  url: string;
+  title: string;
+  tags: string[];
+  /** When you first saved it, in milliseconds. */
+  savedAt: number;
+  /** Moves on with every change, so a delivery never removes tags queued during it. */
+  version: number;
+  attempts: number;
+  lastError: string | null;
+  /** The API answered no: it waits for you, not for the API. */
+  refused: boolean;
+}
 
 export interface ChromeState {
   tabs: TabState[];
@@ -54,6 +74,23 @@ export interface SaveSheet {
   bookmark: Bookmark | null;
   vocabulary: TagCount[];
   error: string | null;
+  /** The API could not be reached: saving queues, and the tags shown are what is known here. */
+  offline: boolean;
+  /** Offline, the tags this browser knows the page was saved with, or null if it knows none. */
+  known: string[] | null;
+  /** A save of this page still waiting, or refused. */
+  pending: PendingSave | null;
+}
+
+/** How a delivery of waiting saves went. */
+export type Delivery = 'nothing' | 'delivered' | 'offline' | 'blocked';
+
+/** File > Saves Waiting: everything still to be delivered (ADR 0017). */
+export interface WaitingView {
+  mode: 'waiting';
+  saves: PendingSave[];
+  /** The open card's list, updated as saves go: the same card, not a fresh one. */
+  update?: boolean;
 }
 
 export interface SettingsView {
@@ -64,7 +101,7 @@ export interface SettingsView {
   tokenStorage: 'keychain' | 'unavailable';
 }
 
-export type OverlayState = SaveSheet | SettingsView;
+export type OverlayState = SaveSheet | SettingsView | WaitingView;
 
 export interface SettingsInput {
   apiUrl: string;
@@ -149,6 +186,8 @@ export interface ChromeApi {
   onState(listener: (state: ChromeState) => void): () => void;
   /** Focus has moved to a page or the overlay: they share the window, so no DOM blur fires. */
   onBlur(listener: () => void): () => void;
+  /** The system is back online: saves waiting may go now (ADR 0017). */
+  online(): Promise<void>;
 }
 
 /** Requests from the overlay: the save sheet and settings. */
@@ -158,6 +197,10 @@ export interface OverlayApi {
   removeTag(tag: string): Promise<Bookmark | string>;
   saveSettings(input: SettingsInput): Promise<void>;
   testConnection(input: SettingsInput): Promise<ConnectionReport>;
+  /** Try a waiting or refused save again now: one, or all of them. */
+  retry(id?: number): Promise<Delivery>;
+  /** Give up on a waiting or refused save. */
+  drop(id: number): Promise<void>;
   onState(listener: (state: OverlayState) => void): () => void;
 }
 
@@ -189,6 +232,7 @@ export const Channels = {
     openSettings: 'chrome:open-settings',
     state: 'chrome:state',
     blur: 'chrome:blur',
+    online: 'chrome:online',
   },
   overlay: {
     close: 'overlay:close',
@@ -196,6 +240,8 @@ export const Channels = {
     removeTag: 'overlay:remove-tag',
     saveSettings: 'overlay:save-settings',
     testConnection: 'overlay:test-connection',
+    retry: 'overlay:retry',
+    drop: 'overlay:drop',
     state: 'overlay:state',
   },
   history: {

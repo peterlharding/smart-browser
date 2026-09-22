@@ -15,10 +15,22 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /**
+     * Nothing that is the API answered: it could not be reached, timed out, or something in
+     * front of it (a proxy's 502, 503 or 504) answered in its place. A save that fails this
+     * way waits in the queue; any other failure is the API's answer, and is said at once
+     * (ADR 0017).
+     */
+    readonly offline = false,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** Whether *error* means the API was away, rather than that it answered no. */
+export function isOffline(error: unknown): boolean {
+  return error instanceof ApiError && error.offline;
 }
 
 export interface ApiConfig {
@@ -94,7 +106,7 @@ export class Api {
       });
     } catch (cause) {
       const because = cause instanceof Error ? cause.message : String(cause);
-      throw new ApiError(`Cannot reach ${this.baseUrl}: ${because}`, 0);
+      throw new ApiError(`Cannot reach ${this.baseUrl}: ${because}`, 0, true);
     }
 
     let payload: unknown = null;
@@ -103,7 +115,12 @@ export class Api {
     } catch {
       payload = null;
     }
-    if (!response.ok) throw new ApiError(errorMessage(response.status, payload), response.status);
+    if (!response.ok) {
+      // The API explains its own refusals in `detail`; a gateway's error page does not.
+      const fromApi = detailOf(payload) !== null;
+      const away = response.status === 502 || response.status === 504 || (response.status === 503 && !fromApi);
+      throw new ApiError(away ? `Cannot reach ${this.baseUrl}: ${response.status} from something in front of it` : errorMessage(response.status, payload), response.status, away);
+    }
     return payload as T;
   }
 }

@@ -21,6 +21,7 @@ const api: ChromeApi = {
   stop: () => ipcRenderer.invoke(c.stop),
   openSaveSheet: () => ipcRenderer.invoke(c.openSaveSheet),
   openSettings: () => ipcRenderer.invoke(c.openSettings),
+  online: () => ipcRenderer.invoke(c.online),
   onState(listener) {
     const handler = (_event: IpcRendererEvent, state: ChromeState) => listener(state);
     ipcRenderer.on(c.state, handler);

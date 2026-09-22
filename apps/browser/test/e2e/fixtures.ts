@@ -4,6 +4,7 @@
  */
 
 import { _electron, test as base, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -176,6 +177,22 @@ export class BrowserApp {
    */
   async snapshot(name: string): Promise<void> {
     mkdirSync(SNAPSHOTS, { recursive: true });
+    // What settles, settled: a card fading in is captured as it looks, not half there.
+    // Endless animations, a tab's loading spinner say, are left running.
+    await Promise.all(
+      this.app.windows().map((page) =>
+        page
+          .evaluate(() =>
+            Promise.all(
+              document
+                .getAnimations()
+                .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+                .map((a) => a.finished),
+            ).then(() => undefined),
+          )
+          .catch(() => undefined), // a page mid-navigation has nothing to wait for
+      ),
+    );
     const layers = await this.app.evaluate(async ({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0]!;
       const png = async (wc: Electron.WebContents) => (await wc.capturePage()).toPNG().toString('base64');
@@ -198,14 +215,39 @@ export class BrowserApp {
     );
   }
 
-  close(): Promise<void> {
-    return this.app.close();
+  /**
+   * Quit, as the menu's Quit would. An app that does not quit is a bug, not a slow test:
+   * after 10 seconds it is killed, and the failure carries what it printed.
+   */
+  async close(): Promise<void> {
+    const quit = this.app.close().then(() => 'quit' as const);
+    const stuck = new Promise<'stuck'>((resolve) => setTimeout(() => resolve('stuck'), 10_000).unref());
+    if ((await Promise.race([quit, stuck])) === 'quit') return;
+    const pid = this.app.process().pid;
+    let stack = '';
+    try {
+      if (process.platform === 'darwin' && pid) stack = execFileSync('sample', [String(pid), '2'], { encoding: 'utf8' });
+    } catch {
+      // no sample, only the output
+    }
+    this.app.process().kill('SIGKILL');
+    throw new Error(`The app did not quit within 10 seconds.
+--- output ---
+${this.output.join('').slice(-4000)}
+--- sample ---
+${stack.slice(0, 20000)}`);
   }
 
   /** Close, and delete the throwaway profile: every launch makes one. */
   async dispose(): Promise<void> {
-    await this.close().catch(() => undefined);
-    rmSync(this.profile, { recursive: true, force: true });
+    try {
+      await this.close();
+    } catch (error) {
+      // Closing an app that already quit is fine; one that will not quit is a failure.
+      if (error instanceof Error && error.message.startsWith('The app did not quit')) throw error;
+    } finally {
+      rmSync(this.profile, { recursive: true, force: true });
+    }
   }
 }
 
@@ -214,14 +256,34 @@ export class BrowserApp {
  * request, so a test can say what the browser sent, including at launch, before any code
  * in the test could have wrapped anything in the app.
  */
-export async function recordApi(): Promise<{ url: string; requests: string[]; close(): Promise<void> }> {
+export interface ApiRecorder {
+  url: string;
+  /** What reached the API through the proxy, as "METHOD /path". */
+  requests: string[];
+  /** Refuse every connection, as an API that is not running does (ADR 0017). */
+  down: boolean;
+  /** Answer saves with the API's own 422, as it would a tag it cannot accept. */
+  refuseSaves: boolean;
+  close(): Promise<void>;
+}
+
+export async function recordApi(): Promise<ApiRecorder> {
   const requests: string[] = [];
   const server = createServer((request, response) => {
+    if (recorder.down) {
+      request.socket.destroy();
+      return;
+    }
     const chunks: Buffer[] = [];
     request.on('data', (chunk: Buffer) => chunks.push(chunk));
     request.on('end', () => {
       const path = new URL(request.url ?? '/', 'http://api').pathname;
       requests.push(`${request.method} ${path}`);
+      if (recorder.refuseSaves && request.method === 'POST' && path === '/api/v1/bookmarks') {
+        response.writeHead(422, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ detail: 'Tag names cannot contain a comma.' }));
+        return;
+      }
       const headers = new Headers();
       for (const name of ['authorization', 'content-type', 'accept']) {
         const value = request.headers[name];
@@ -237,17 +299,20 @@ export async function recordApi(): Promise<{ url: string; requests: string[]; cl
       );
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as AddressInfo;
-  return {
-    url: `http://127.0.0.1:${port}`,
+  const recorder: ApiRecorder = {
+    url: '',
     requests,
+    down: false,
+    refuseSaves: false,
     close: () =>
       new Promise((resolve) => {
         server.closeAllConnections();
         server.close(() => resolve());
       }),
   };
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  recorder.url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  return recorder;
 }
 
 // `smart`, not `browser`: Playwright already has a fixture by that name.

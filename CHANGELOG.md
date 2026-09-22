@@ -9,6 +9,30 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Added
+
+- **Saves made while the API is away are kept and delivered later**
+  ([ADR 0017](doc/decisions/0017-offline-save-queue.md)).
+  Since 0.5.0 a save is the one moment the API must be reachable, and a save made while
+  `make api-dev` was not running failed and was lost.
+  - The save sheet still takes a save when the API cannot be reached. It shows the tags this browser knows for the page, and autocompletes from your tags as last fetched. Quick save queues as well.
+  - The save button shows a page as waiting, with a clock, until the save is delivered. It shows the server's reason if the save was refused.
+  - Waiting saves are delivered at launch, alongside the next action that reaches the API, after Settings are saved, when the Mac comes back online or wakes, and on a timer (1, 2, 5, then every 10 minutes) while anything waits. Nothing is sent while nothing waits.
+  - File > Saves Waiting lists what is still to go, with Retry, Drop and Retry all. A refused save comes back to the sheet to be fixed or dropped.
+  - Only an API that did not answer counts as away. A 401, 403 or 422 is still reported at once.
+
+### Fixed
+
+- **The browser could fail to quit.** A History menu rebuild due just after a page's
+  favicon arrived ran after quitting had closed `history.db`, threw, and Electron's error
+  dialog held the app open behind its windows. A session save due just after a page
+  changed its address could do the same. Neither now runs once quitting starts. The
+  end-to-end suite caught this as an occasional 30-second hang; its fixture now fails
+  within 10 seconds with the app's output and a stack sample of the stuck process.
+- **The address bar could keep focus behind a card or another page** when the window was
+  not the frontmost one. The browser now tells the chrome directly whenever something else
+  takes the keyboard, rather than relying on the operating system to say so.
+
 ## [0.5.0] - 2026-09-22
 
 See [release_notes/v0.5.0.md](release_notes/v0.5.0.md) for details.

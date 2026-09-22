@@ -4,6 +4,7 @@ The Electron shell ([ADR 0015](../../doc/decisions/0015-electron-shell.md)).
 It browses like Chrome and saves like the extension: `⌘⇧B` opens the save sheet over the page, `⌘⇧S` saves without asking.
 Where you have been is kept on this machine, in `history.db` in the profile, behind the History menu and `⌘Y` ([ADR 0016](../../doc/decisions/0016-local-history-backend-on-action.md)).
 The API hears only about pages you act on.
+A save made while the API is away waits and is delivered when it answers; File > Saves Waiting lists what is still to go ([ADR 0017](../../doc/decisions/0017-offline-save-queue.md)).
 
 ## Running it
 
@@ -25,12 +26,13 @@ The token is kept in the Keychain through Electron's `safeStorage`, and never sh
 
 ```text
 src/main/      the main process: the window and its views, tabs, IPC, the API client, settings,
-               history (history.ts, SQLite through node:sqlite) and the menu built from it
+               history (history.ts, SQLite through node:sqlite) and the menu built from it,
+               the connection to the API (connection.ts) and the save queue (queue.ts)
 src/preload/   one bridge per kind of view, one function per request, never ipcRenderer
-src/ui/        Svelte: Chrome.svelte (tab strip, toolbar), Overlay.svelte (save sheet, settings),
+src/ui/        Svelte: Chrome.svelte (tab strip, toolbar), Overlay.svelte (save sheet, settings, saves waiting),
                History.svelte (the history page, smart://history/)
 src/shared/    ipc.ts, the typed channel surface; api-types.ts, generated from the API contract
-test/unit/     Vitest: the omnibox, the API client, settings, URLs and history
+test/unit/     Vitest: the omnibox, the API client, settings, URLs, history and the save queue
 test/e2e/      Playwright: the built app against the real API and a local site
 ```
 

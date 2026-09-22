@@ -285,6 +285,78 @@ describe('pages this browser saved', () => {
   });
 });
 
+describe('saves waiting for the API', () => {
+  const save = (url: string, tags: string[], title = 'T') => ({ url, title, tags });
+
+  it('keeps saves oldest first, one per page, combining tags as the server would', () => {
+    const { history, advance } = setup();
+    history.queueSave(save('https://a.test/p#top', ['x']));
+    advance(1_000);
+    history.queueSave(save('https://b.test/', []));
+    history.queueSave(save('https://a.test/p', ['y', 'x'], 'Later'));
+    const [a, b] = history.pendingSaves();
+    expect(a).toMatchObject({ url: 'https://a.test/p', title: 'Later', tags: ['x', 'y'], savedAt: NOON, refused: false });
+    expect(b).toMatchObject({ url: 'https://b.test/', tags: [] });
+    expect(a!.version).toBeGreaterThan(1);
+  });
+
+  it('replaces the tags of a refused save being fixed, and tries it again', () => {
+    const { history } = setup();
+    history.queueSave(save('https://a.test/', ['bad,tag', 'ok']));
+    const [first] = history.pendingSaves();
+    history.refused(first!.id, 'Tag names cannot contain a comma.');
+    expect(history.pendingFor('https://a.test/')).toMatchObject({ refused: true, lastError: 'Tag names cannot contain a comma.', attempts: 1 });
+    history.queueSave(save('https://a.test/', ['ok']), { replace: true });
+    expect(history.pendingFor('https://a.test/')).toMatchObject({ tags: ['ok'], refused: false, lastError: null });
+  });
+
+  it('removes a delivered save only if nothing was added while it was on its way', () => {
+    const { history } = setup();
+    history.queueSave(save('https://a.test/', ['x']));
+    const sent = history.pendingSaves()[0]!;
+    history.queueSave(save('https://a.test/', ['y'])); // while the delivery was in flight
+    history.delivered(sent, ['x']);
+    expect(history.pendingFor('https://a.test/')!.tags).toEqual(['x', 'y']);
+    expect(history.savedTags('https://a.test/')).toEqual(['x']);
+
+    history.delivered(history.pendingSaves()[0]!, ['x', 'y']);
+    expect(history.pendingSaves()).toEqual([]);
+    expect(history.savedTags('https://a.test/')).toEqual(['x', 'y']);
+  });
+
+  it('counts attempts, retries refused saves, and drops', () => {
+    const { history } = setup();
+    history.queueSave(save('https://a.test/', []));
+    history.queueSave(save('https://b.test/', []));
+    const [a, b] = history.pendingSaves();
+    history.stillWaiting(a!.id, 'Cannot reach it');
+    history.refused(b!.id, 'No.');
+    expect(history.pendingFor('https://a.test/')).toMatchObject({ attempts: 1, lastError: 'Cannot reach it', refused: false });
+    history.unrefuse();
+    expect(history.pendingFor('https://b.test/')!.refused).toBe(false);
+    history.dropPending(a!.id);
+    expect(history.pendingSaves().map((p) => p.url)).toEqual(['https://b.test/']);
+  });
+
+  it('survives deleting browsing data: these are pages you chose to keep', () => {
+    const { history } = setup();
+    history.queueSave(save('https://a.test/', ['x']));
+    history.clear('all');
+    expect(history.pendingSaves()).toHaveLength(1);
+  });
+
+  it('keeps the vocabulary as last fetched, most used first', () => {
+    const { history } = setup();
+    expect(history.vocabulary()).toEqual([]);
+    history.keepVocabulary([{ id: 1, name: 'rare', count: 1 }, { id: 2, name: 'postgres', count: 9 }]);
+    history.keepVocabulary([{ id: 3, name: 'rust', count: 2 }, { id: 2, name: 'postgres', count: 10 }]);
+    expect(history.vocabulary()).toEqual([
+      { id: 2, name: 'postgres', count: 10 },
+      { id: 3, name: 'rust', count: 2 },
+    ]);
+  });
+});
+
 describe('the database', () => {
   let dir: string | undefined;
   afterEach(() => {
@@ -311,6 +383,22 @@ describe('the database', () => {
     first.recordVisit('https://a.test/', 'A');
     first.close();
     expect(urls(setup(file).history)).toEqual(['https://a.test/']);
+  });
+
+  it('brings a 0.5.0 profile up to date, keeping its history', () => {
+    dir = mkdtempSync(join(tmpdir(), 'history-'));
+    const file = join(dir, 'history.db');
+    const old = setup(file).history;
+    old.recordVisit('https://a.test/', 'A');
+    old.close();
+    const db = new DatabaseSync(file); // as 0.5.0 left it: version 1, no queue
+    db.exec('DROP TABLE pending_save; DROP TABLE vocabulary; PRAGMA user_version = 1');
+    db.close();
+
+    const upgraded = setup(file).history;
+    expect(urls(upgraded)).toEqual(['https://a.test/']);
+    upgraded.queueSave({ url: 'https://b.test/', title: '', tags: [] });
+    expect(upgraded.pendingSaves()).toHaveLength(1);
   });
 
   it('refuses a database from a newer browser rather than guess at it', () => {

@@ -1,6 +1,7 @@
 /**
  * Where you have been, kept on this machine and nowhere else (ADR 0016): visits, the tabs
- * you closed, and which pages this browser knows you saved.
+ * you closed, and which pages this browser knows you saved. And the saves still on their
+ * way to the API, with your vocabulary as last fetched, for when it is away (ADR 0017).
  *
  * SQLite through Node's built-in `node:sqlite`, which Electron bundles, so there is no
  * native module to rebuild. The clock is a parameter, so the tests move time instead of
@@ -9,7 +10,7 @@
 
 import { DatabaseSync } from 'node:sqlite';
 
-import type { ClearRange, HistoryEntry, HistoryQuery, HistoryResult } from '../shared/ipc';
+import type { ClearRange, HistoryEntry, HistoryQuery, HistoryResult, PendingSave, TagCount } from '../shared/ipc';
 import { hostOf, pageKey } from './urls';
 
 /** As long as Chrome keeps it. */
@@ -85,6 +86,28 @@ const MIGRATIONS = [
     url  TEXT PRIMARY KEY,
     tags TEXT NOT NULL,
     at   INTEGER NOT NULL
+  );
+  `,
+  // ADR 0017: saves made while the API was away, one row per page, oldest first by id;
+  // version moves on every change, so a delivery never removes tags added while it was in
+  // flight. And the vocabulary as last fetched, for autocomplete while the API is away.
+  `
+  CREATE TABLE pending_save (
+    id         INTEGER PRIMARY KEY,
+    url        TEXT NOT NULL UNIQUE,
+    title      TEXT NOT NULL DEFAULT '',
+    tags       TEXT NOT NULL,
+    saved_at   INTEGER NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    attempts   INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    refused    INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE vocabulary (
+    name  TEXT PRIMARY KEY,
+    id    INTEGER NOT NULL,
+    count INTEGER NOT NULL
   );
   `,
 ];
@@ -320,6 +343,98 @@ export class History {
     if (result.changes) this.changed();
   }
 
+  // --- saves waiting for the API (ADR 0017) ----------------------------------------------
+
+  /**
+   * Keep a save to deliver later. A page already waiting becomes one entry: the union of
+   * the tags, as the server would merge them, and the later title. *replace* instead sets
+   * the tags, for fixing a save the API refused; either way it is tried again.
+   */
+  queueSave({ url, title, tags }: { url: string; title: string; tags: string[] }, { replace = false } = {}): void {
+    if (!this.db.isOpen) return;
+    const page = pageKey(url);
+    const existing = this.pendingFor(page);
+    const merged = replace || !existing ? unique(tags) : unique([...existing.tags, ...tags]);
+    this.db
+      .prepare(
+        `INSERT INTO pending_save (url, title, tags, saved_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (url) DO UPDATE SET
+           title = CASE WHEN excluded.title <> '' THEN excluded.title ELSE title END,
+           tags = excluded.tags, version = version + 1, refused = 0, last_error = NULL`,
+      )
+      .run(page, title, JSON.stringify(merged), this.now());
+    this.changed();
+  }
+
+  /** Everything waiting, oldest first, refused ones included. */
+  pendingSaves(): PendingSave[] {
+    if (!this.db.isOpen) return [];
+    return this.db
+      .prepare('SELECT * FROM pending_save ORDER BY id')
+      .all()
+      .map((row) => pendingOf(row as unknown as PendingRow));
+  }
+
+  pendingFor(url: string): PendingSave | null {
+    if (!this.db.isOpen) return null;
+    const row = this.db.prepare('SELECT * FROM pending_save WHERE url = ?').get(pageKey(url));
+    return row ? pendingOf(row as unknown as PendingRow) : null;
+  }
+
+  /**
+   * A save the API took. Removed only if unchanged since delivery began: tags queued
+   * meanwhile are still to go, in the next delivery.
+   */
+  delivered(save: PendingSave, tags: string[]): void {
+    if (!this.db.isOpen) return;
+    this.db.prepare('DELETE FROM pending_save WHERE id = ? AND version = ?').run(save.id, save.version);
+    this.markSaved(save.url, tags);
+  }
+
+  /** An attempt that found the API still away. */
+  stillWaiting(id: number, error: string): void {
+    if (!this.db.isOpen) return;
+    this.db.prepare('UPDATE pending_save SET attempts = attempts + 1, last_error = ? WHERE id = ?').run(error, id);
+    this.changed();
+  }
+
+  /** The API answered no. Not tried again until it is saved again or retried. */
+  refused(id: number, reason: string): void {
+    if (!this.db.isOpen) return;
+    this.db
+      .prepare('UPDATE pending_save SET attempts = attempts + 1, last_error = ?, refused = 1 WHERE id = ?')
+      .run(reason, id);
+    this.changed();
+  }
+
+  /** Try refused saves again: one, or all of them. */
+  unrefuse(id?: number): void {
+    this.db.prepare('UPDATE pending_save SET refused = 0 WHERE (? IS NULL OR id = ?)').run(id ?? null, id ?? null);
+    this.changed();
+  }
+
+  dropPending(id: number): void {
+    const result = this.db.prepare('DELETE FROM pending_save WHERE id = ?').run(id);
+    if (result.changes) this.changed();
+  }
+
+  /** Your tags with their counts, as the API last gave them. */
+  vocabulary(): TagCount[] {
+    return this.db
+      .prepare('SELECT id, name, count FROM vocabulary ORDER BY count DESC, name')
+      .all()
+      .map((row) => ({ ...(row as unknown as TagCount) }));
+  }
+
+  keepVocabulary(tags: TagCount[]): void {
+    if (!this.db.isOpen) return;
+    const insert = this.db.prepare('INSERT OR REPLACE INTO vocabulary (name, id, count) VALUES (?, ?, ?)');
+    this.transaction(() => {
+      this.db.exec('DELETE FROM vocabulary');
+      for (const tag of tags) insert.run(tag.name, tag.id, tag.count);
+    });
+  }
+
   // --- internals -------------------------------------------------------------------------
 
   private migrate(): void {
@@ -353,6 +468,36 @@ export class History {
   private changed(): void {
     for (const listener of this.listeners) listener();
   }
+}
+
+interface PendingRow {
+  id: number;
+  url: string;
+  title: string;
+  tags: string;
+  saved_at: number;
+  version: number;
+  attempts: number;
+  last_error: string | null;
+  refused: number;
+}
+
+function pendingOf(row: PendingRow): PendingSave {
+  return {
+    id: row.id,
+    url: row.url,
+    title: row.title,
+    tags: JSON.parse(row.tags) as string[],
+    savedAt: row.saved_at,
+    version: row.version,
+    attempts: row.attempts,
+    lastError: row.last_error,
+    refused: row.refused === 1,
+  };
+}
+
+function unique(tags: string[]): string[] {
+  return [...new Set(tags)];
 }
 
 /** When "the last hour" and the rest begin; "all time" is the beginning. */

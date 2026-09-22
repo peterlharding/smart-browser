@@ -13,6 +13,9 @@ export const icons = {
   bookmark: icon('<path d="M4 2.5h8v11L8 10.6 4 13.5z"/>'),
   bookmarkFilled:
     '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h8v11L8 10.6 4 13.5z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+  // Saved here, waiting for the API: the bookmark, with a clock over its corner.
+  bookmarkWaiting:
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2.5h7v10L7 10 3.5 12.5z" fill="currentColor" fill-opacity=".25"/><circle cx="11.5" cy="11.5" r="3.6" fill="var(--toolbar)"/><path d="M11.5 9.9v1.8l1.1.7"/></svg>',
   warning: icon('<path d="M8 2.2 14.2 13H1.8z"/><path d="M8 6.4v3.1M8 11.3v.1"/>'),
   settings: icon(
     '<path d="M2.5 4h11M2.5 8h11M2.5 12h11"/><circle cx="10.5" cy="4" r="1.7" fill="var(--toolbar)"/><circle cx="5.5" cy="8" r="1.7" fill="var(--toolbar)"/><circle cx="9" cy="12" r="1.7" fill="var(--toolbar)"/>',

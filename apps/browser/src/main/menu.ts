@@ -75,6 +75,8 @@ export function buildMenu(
           click: on((b) => void b.openSaveSheet()),
         },
         { id: 'quick-save', label: 'Quick Save', accelerator: 'CmdOrCtrl+Shift+S', click: on((b) => void b.quickSave()) },
+        // Present only while saves wait for the API (ADR 0017).
+        ...savesWaiting(history, on),
         { type: 'separator' },
         { id: 'close-tab', label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: on((b) => b.closeActive()) },
         ...(isMac ? [] : [{ type: 'separator' } as const, { id: 'settings', label: 'Settings', click: on((b) => b.openSettings()) }, { role: 'quit' } as const]),
@@ -242,4 +244,13 @@ function dayLabel(day: string): string {
   return new Intl.DateTimeFormat(app.getLocale(), { weekday: 'long', day: 'numeric', month: 'long' }).format(
     new Date(year!, month! - 1, date!),
   );
+}
+
+function savesWaiting(
+  history: History,
+  on: (action: (browser: Browser) => void) => () => void,
+): MenuItemConstructorOptions[] {
+  const count = history.pendingSaves().length;
+  if (!count) return [];
+  return [{ id: 'saves-waiting', label: `Saves Waiting (${count})…`, click: on((b) => b.showWaiting()) }];
 }

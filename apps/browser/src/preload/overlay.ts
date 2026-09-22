@@ -14,6 +14,8 @@ const api: OverlayApi = {
   removeTag: (tag) => ipcRenderer.invoke(o.removeTag, tag),
   saveSettings: (input) => ipcRenderer.invoke(o.saveSettings, input),
   testConnection: (input) => ipcRenderer.invoke(o.testConnection, input),
+  retry: (id) => ipcRenderer.invoke(o.retry, id),
+  drop: (id) => ipcRenderer.invoke(o.drop, id),
   onState(listener) {
     const handler = (_event: IpcRendererEvent, state: OverlayState) => listener(state);
     ipcRenderer.on(o.state, handler);

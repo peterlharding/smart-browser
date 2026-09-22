@@ -45,6 +45,7 @@ export function registerIpc(browsers: () => Iterable<Browser>): void {
   handle('chrome', c.stop, (b) => b.stop());
   handle('chrome', c.openSaveSheet, (b) => b.openSaveSheet());
   handle('chrome', c.openSettings, (b) => b.openSettings());
+  handle('chrome', c.online, (b) => b.online());
 
   const o = Channels.overlay;
   handle('overlay', o.close, (b) => b.closeOverlay());
@@ -52,6 +53,8 @@ export function registerIpc(browsers: () => Iterable<Browser>): void {
   handle('overlay', o.removeTag, (b, tag: string) => b.removeTagFromSheet(String(tag)));
   handle('overlay', o.saveSettings, (b, input: SettingsInput) => b.saveSettings(input));
   handle('overlay', o.testConnection, (b, input: SettingsInput) => b.testConnection(input));
+  handle('overlay', o.retry, (b, id?: number) => b.retrySaves(id === undefined || id === null ? undefined : Number(id)));
+  handle('overlay', o.drop, (b, id: number) => b.dropSave(Number(id)));
 
   // The history page is a tab: its requests are answered by the window it is in.
   const h = Channels.history;

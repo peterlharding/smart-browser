@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Api, ApiError, errorMessage } from '../../src/main/api';
+import { Api, ApiError, errorMessage, isOffline } from '../../src/main/api';
 
 type Call = { url: string; init: RequestInit | undefined };
 
@@ -76,5 +76,38 @@ describe('errorMessage', () => {
 
   it('falls back to the status when there is no reason', () => {
     expect(errorMessage(500, null)).toBe('Request failed (500).');
+  });
+});
+
+describe('offline or refused (ADR 0017)', () => {
+  const failure = async (response: { status: number; body?: unknown } | 'unreachable') => {
+    const fetchImpl = async () => {
+      if (response === 'unreachable') throw new TypeError('fetch failed');
+      return new Response(response.body === undefined ? '<html>Bad gateway</html>' : JSON.stringify(response.body), {
+        status: response.status,
+      });
+    };
+    const api = new Api({ baseUrl: 'http://api.test', token: 't' }, fetchImpl);
+    return api.save({ url: 'https://a.test/', title: null, tags: [] }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+  };
+
+  it('is offline when nothing that is the API answered', async () => {
+    for (const response of ['unreachable', { status: 502 }, { status: 503 }, { status: 504 }] as const) {
+      const error = await failure(response);
+      expect(isOffline(error), JSON.stringify(response)).toBe(true);
+      expect((error as ApiError).message).toMatch(/^Cannot reach http:\/\/api\.test/);
+    }
+  });
+
+  it('is refused when the API itself answered no, its own 503 included', async () => {
+    for (const status of [401, 403, 422, 500]) {
+      expect(isOffline(await failure({ status, body: { detail: 'No.' } })), String(status)).toBe(false);
+    }
+    const noTokens = await failure({ status: 503, body: { detail: 'No API tokens configured; writes are disabled.' } });
+    expect(isOffline(noTokens)).toBe(false);
+    expect((noTokens as ApiError).message).toBe('The server has no API tokens configured, so it is refusing requests.');
   });
 });

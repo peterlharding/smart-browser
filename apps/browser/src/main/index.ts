@@ -3,14 +3,16 @@
  * lives under (ADR 0015).
  */
 
-import { BrowserWindow, Menu, app, net, protocol, safeStorage, session } from 'electron';
+import { BrowserWindow, Menu, app, net, powerMonitor, protocol, safeStorage, session } from 'electron';
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Browser } from './browser';
+import { Connection } from './connection';
 import { History } from './history';
 import { registerIpc } from './ipc';
 import { buildMenu } from './menu';
+import { SaveQueue } from './queue';
 import { SettingsStore, type Secrets } from './settings';
 
 // A separate profile, for development and for the end-to-end tests, so neither touches
@@ -38,6 +40,8 @@ const paths = {
 const browsers = new Set<Browser>();
 let settings: SettingsStore;
 let history: History;
+let connection: Connection;
+let queue: SaveQueue;
 
 function current(): Browser | null {
   const focused = BrowserWindow.getFocusedWindow();
@@ -53,6 +57,8 @@ function openWindow(): Browser {
       sessionFile: paths.sessionFile(),
     },
     history,
+    connection,
+    queue,
   );
   browsers.add(browser);
   browser.window.on('closed', () => browsers.delete(browser));
@@ -63,6 +69,7 @@ function openWindow(): Browser {
 // most once a second while pages load.
 let menuBuiltAt = 0;
 let menuTimer: NodeJS.Timeout | null = null;
+let quitting = false;
 
 function buildApplicationMenu(): void {
   menuTimer = null;
@@ -71,7 +78,7 @@ function buildApplicationMenu(): void {
 }
 
 function rebuildMenuSoon(): void {
-  if (menuTimer) return;
+  if (menuTimer || quitting) return;
   menuTimer = setTimeout(buildApplicationMenu, Math.max(0, menuBuiltAt + 1000 - Date.now()));
 }
 
@@ -95,7 +102,20 @@ void app.whenReady().then(() => {
   history = new History(join(app.getPath('userData'), 'history.db'));
   history.prune();
   history.onChange(rebuildMenuSoon);
-  app.on('will-quit', () => history.close());
+  // Saves made while the API was away (ADR 0017): one queue and one connection for the app.
+  connection = new Connection(settings);
+  queue = new SaveQueue(history, connection);
+  queue.start();
+  powerMonitor.on('resume', () => void queue.flush()); // the Mac woke: the API may be back
+  // Nothing that reads history.db may run once it is closed: a menu rebuild due a moment
+  // after a page's favicon arrived threw, and Electron's error dialog held the app open.
+  app.on('will-quit', () => {
+    quitting = true;
+    if (menuTimer) clearTimeout(menuTimer);
+    menuTimer = null;
+    queue.stop();
+    history.close();
+  });
 
   protocol.handle('smart', (request) => {
     const url = new URL(request.url);

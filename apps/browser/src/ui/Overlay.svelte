@@ -6,14 +6,18 @@
   import { overlayApi } from './bridge';
   import SaveSheet from './SaveSheet.svelte';
   import Settings from './Settings.svelte';
+  import WaitingSaves from './WaitingSaves.svelte';
 
   const smart = overlayApi();
   let view: OverlayState | null = $state(null);
   let generation = $state(0); // a fresh card each time, so no state leaks between opens
 
   smart.onState((next) => {
+    // An update to the open card keeps it, with its focus and what it is saying; anything
+    // else is a fresh card.
+    const update = next.mode === 'waiting' && next.update === true && view?.mode === 'waiting';
     view = next;
-    generation += 1;
+    if (!update) generation += 1;
   });
 
   function onKey(event: KeyboardEvent) {
@@ -30,9 +34,11 @@
 <div class="backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && smart.close()}>
   {#if view}
     {#key generation}
-      <div class="card" class:settings={view.mode === 'settings'} role="dialog" aria-modal="true">
+      <div class="card" class:settings={view.mode === 'settings'} class:wide={view.mode === 'waiting'} role="dialog" aria-modal="true">
         {#if view.mode === 'save'}
           <SaveSheet sheet={view} />
+        {:else if view.mode === 'waiting'}
+          <WaitingSaves saves={view.saves} />
         {:else}
           <Settings settings={view} />
         {/if}
@@ -66,6 +72,10 @@
     box-shadow: var(--shadow);
     user-select: text;
     animation: appear 120ms ease-out;
+  }
+
+  .card.wide {
+    width: 440px;
   }
 
   .card.settings {
