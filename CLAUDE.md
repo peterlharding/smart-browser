@@ -38,7 +38,10 @@ make rehash-urls    # after any urlnorm.py change; CONFIRM=yes to apply
 make worker         # the crawl worker; ONCE=yes drains what is due and exits
 make embed          # the embedding pass; ONCE=yes embeds what is waiting and exits
 make test-model     # the real embedding model; downloads 64 MB once
-make browser-dev    # build and run the browser
+make browser-dev    # build and run the browser (profile: "Smart-Browser Dev")
+make browser-package   # Smart-Browser.app, signed ad hoc, in apps/browser/dist
+make browser-release   # Developer ID signed and notarized, DMG and zip (RELEASING.md)
+make test-browser-e2e-packaged  # the e2e suite against the packaged app
 make browser-check  # the browser's type checks and unit tests (part of make check)
 make test-browser-e2e  # the built browser against the real API on <DB_NAME>_test
 make crawl-status   # jobs by state, latest errors

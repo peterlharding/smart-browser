@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Placeholder icon (ADR 0018): a bookmark with a tag's hole, in the UI's accent blue,
+       on macOS's icon grid (an 824-pixel rounded square in a 1024 canvas). -->
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f8bf7"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#0b1b3f" flood-opacity="0.35"/>
+    </filter>
+    <mask id="hole">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <circle cx="512" cy="384" r="40" fill="#000"/>
+    </mask>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#face)" filter="url(#shadow)"/>
+  <path d="M372 270 H652 Q682 270 682 300 V770 L512 650 L342 770 V300 Q342 270 372 270 Z"
+        fill="#fff" stroke="#fff" stroke-width="24" stroke-linejoin="round" mask="url(#hole)"/>
+</svg>

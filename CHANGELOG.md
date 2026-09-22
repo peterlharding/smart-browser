@@ -9,6 +9,22 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Added
+
+- **The browser packages as `Smart-Browser.app`** ([ADR 0018](doc/decisions/0018-packaging-and-signing.md)).
+  - `make browser-package` builds it, signed ad hoc, into `apps/browser/dist/`.
+  - `make browser-release` signs it with Developer ID under the hardened runtime, with only the JIT entitlement. It then notarizes and staples it, and makes the DMG to install from and the zip updates will come from.
+  - The app is `com.performiq.smart-browser`, `arm64`, with a placeholder icon.
+  - RELEASING.md now builds and attaches both files to each release, and describes the one-time notarization setup.
+- **`make test-browser-e2e-packaged`** runs the whole end-to-end suite against the packaged app. CI packages the app on macOS and starts it (`make browser-package-check`).
+
+### Changed
+
+- **A build run from the repo uses its own profile, `Smart-Browser Dev`**, so experiments
+  never touch the history and settings of the installed app, and a development build's
+  `history.db` migration never moves the installed app's profile past what it knows.
+  `SMART_BROWSER_USER_DATA` still overrides both.
+
 ## [0.6.0] - 2026-09-22
 
 See [release_notes/v0.6.0.md](release_notes/v0.6.0.md) for details.

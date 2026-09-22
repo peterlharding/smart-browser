@@ -15,12 +15,17 @@ import { buildMenu } from './menu';
 import { SaveQueue } from './queue';
 import { SettingsStore, type Secrets } from './settings';
 
-// A separate profile, for development and for the end-to-end tests, so neither touches
-// the one you browse with. Must be set before the app is ready.
+app.setName('Smart-Browser');
+// The profile follows the build (ADR 0018): the installed app browses in "Smart-Browser",
+// a build run from the repo in "Smart-Browser Dev", so experiments never touch real
+// history, and a development build's history.db migration never moves the installed
+// app's profile past what it knows. The tests name a throwaway profile of their own.
+// Must be set before the app is ready.
 if (process.env.SMART_BROWSER_USER_DATA) {
   app.setPath('userData', process.env.SMART_BROWSER_USER_DATA);
+} else if (!app.isPackaged) {
+  app.setPath('userData', join(app.getPath('appData'), 'Smart-Browser Dev'));
 }
-app.setName('Smart-Browser');
 
 // The browser's own UI is served from smart://ui/, a private scheme, rather than file://:
 // it gives the UI a real origin, so its CSP can say "this app and nothing else", and it is

@@ -145,11 +145,26 @@ release cannot be cut with an API that reports the wrong version.
    Name the commit rather than tagging `HEAD`, so a commit made meanwhile cannot end up tagged by accident.
    If a tag ever does go out on a bad commit, leave it where it is and release the next patch version, as 0.2.1 did; moving a published tag rewrites what anyone who fetched it already has.
 
-10. **(Optional) Publish a GitHub release** from the tag, using the matching release notes as the body:
+10. **Build the browser for the release**, on this Mac, from the tagged commit ([ADR 0018](doc/decisions/0018-packaging-and-signing.md)):
+
+    ```sh
+    git checkout v<version>
+    make browser-release
+    git checkout main
+    ```
+
+    It packages `Smart-Browser.app`, signs it with the Developer ID certificate, notarizes and staples it, and makes the two files a release carries in `apps/browser/dist/`:
+    `Smart-Browser-<version>-arm64.dmg` to install from, and `Smart-Browser-<version>-darwin-arm64.zip`, which updates come from.
+    Notarizing takes a few minutes each for the app and the DMG.
+    It needs the one-time setup under **Signing and notarization** below, and stops before doing anything slow if either part is missing.
+
+11. **Publish the GitHub release** from the tag, with the release notes as the body and the DMG and zip attached:
 
     ```sh
     gh release create v<version> --title "Smart-Browser <version>" \
-      --notes-file release_notes/v<version>.md --verify-tag
+      --notes-file release_notes/v<version>.md --verify-tag \
+      apps/browser/dist/Smart-Browser-<version>-arm64.dmg \
+      apps/browser/dist/Smart-Browser-<version>-darwin-arm64.zip
     ```
 
     `--verify-tag` refuses to publish if the tag is not on GitHub, rather than creating one on whatever `main` is by then.
@@ -160,6 +175,29 @@ release cannot be cut with an API that reports the wrong version.
 
     If the previous version was tagged but never published, readers of this release have not seen its notes.
     Publish the two files together, this release's first, with relative links made absolute: 0.2.1's release body carries 0.2.0's notes this way.
+
+## Signing and notarization
+
+A release is signed and notarized on this Mac, never in CI, so the signing key never leaves its Keychain (ADR 0018).
+Two things must be there, once:
+
+- **The Developer ID Application certificate**, `Developer ID Application: Peter Harding (T5RDMAD9Q4)`.
+  `security find-identity -v -p codesigning` lists it.
+  Another certificate can be named with `SMART_BROWSER_SIGNING_IDENTITY`.
+- **Notarization credentials, as an App Store Connect API key**, stored in the Keychain under the name `smart-browser-notary`:
+  1. In App Store Connect, under Users and Access, Integrations, Team Keys, create a key with the Developer role, and download its `AuthKey_<id>.p8`, which can be downloaded once.
+  2. Store it, with the key id and the issuer id shown on that page:
+
+     ```sh
+     xcrun notarytool store-credentials smart-browser-notary \
+       --key AuthKey_<id>.p8 --key-id <id> --issuer <issuer-uuid>
+     ```
+
+  3. Delete the `.p8` file, or keep it somewhere safe: the Keychain now holds what notarizing needs.
+
+  Another stored name can be used with `SMART_BROWSER_NOTARY_PROFILE`.
+
+`make browser-package` builds the same app signed ad hoc, for trying it on this Mac, and `make test-browser-e2e-packaged` runs the whole end-to-end suite against it.
 
 ## Commit conventions
 

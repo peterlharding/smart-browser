@@ -20,6 +20,17 @@ const SNAPSHOTS = join(APP, 'test-results', 'snapshots');
 // fails unless Chromium renders in software.
 const LINUX_SWITCHES = ['-r', join(APP, 'test/e2e/linux-secret-store.cjs'), '--disable-gpu'];
 
+/**
+ * A packaged Smart-Browser.app to test instead of the build in out/: `make
+ * test-browser-e2e-packaged` sets it to what `make browser-package` made.
+ */
+export const PACKAGED_APP = () => process.env.SMART_BROWSER_APP || null;
+
+// On a Mac, Playwright's loader gives a build run from out/ a mock Keychain, but not a
+// packaged app, which then asks the real Keychain, and macOS asks you to allow each new
+// build's signature: the run waits on a dialog. The tests keep off your Keychain either way.
+const PACKAGED_MAC_SWITCHES = ['--use-mock-keychain'];
+
 export const API = () => process.env.E2E_API_URL!;
 export const TOKEN = () => process.env.E2E_API_TOKEN!;
 export const SITE = (path: string) => `${process.env.E2E_SITE!}${path}`;
@@ -36,14 +47,22 @@ export class BrowserApp {
   ) {}
 
   static async launch(profile = mkdtempSync(join(tmpdir(), 'smart-browser-e2e-'))): Promise<BrowserApp> {
+    const packaged = PACKAGED_APP();
     const app = await _electron.launch({
       cwd: APP,
       // Without this Playwright adds --no-sandbox on Linux: the tests run the browser as it
       // ships, sandboxed, which is also why CI allows unprivileged user namespaces.
       chromiumSandbox: true,
+      // The packaged app, when one is named (ADR 0018): the same tests, against what ships.
+      ...(packaged ? { executablePath: join(packaged, 'Contents', 'MacOS', 'Smart-Browser') } : {}),
       // Chromium's switches before the app path: Electron hands everything after it to
-      // the app, not to Chromium, so a switch there is silently ignored.
-      args: [...(process.platform === 'linux' ? LINUX_SWITCHES : []), '.'],
+      // the app, not to Chromium, so a switch there is silently ignored. A packaged app
+      // has its path built in.
+      args: [
+        ...(process.platform === 'linux' ? LINUX_SWITCHES : []),
+        ...(packaged && process.platform === 'darwin' ? PACKAGED_MAC_SWITCHES : []),
+        ...(packaged ? [] : ['.']),
+      ],
       env: { ...process.env, SMART_BROWSER_USER_DATA: profile },
     });
     const browser = new BrowserApp(app, profile);

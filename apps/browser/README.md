@@ -20,7 +20,19 @@ Open Settings (`⌘,`) and enter the API's address and a token, the token half o
 The address is where `make api-dev` listens: `API_HOST` and `API_PORT` from `.env`, `http://127.0.0.1:8000` by default.
 The token is kept in the Keychain through Electron's `safeStorage`, and never shown again.
 
-`SMART_BROWSER_USER_DATA=/some/dir` runs it with a separate profile, as the tests do, so experiments never touch the one you browse with.
+Run from the repo, it uses its own profile, `~/Library/Application Support/Smart-Browser Dev`, so experiments never touch the installed app's history and settings.
+`SMART_BROWSER_USER_DATA=/some/dir` names another, as the tests do.
+
+## Packaging it
+
+```sh
+make browser-package            # Smart-Browser.app in apps/browser/dist/, signed ad hoc, to try
+make test-browser-e2e-packaged  # the whole end-to-end suite, against that package
+make browser-release            # signed with Developer ID, notarized: the DMG and zip a release carries
+```
+
+`package.mjs` does the packaging with Electron's own tools ([ADR 0018](../../doc/decisions/0018-packaging-and-signing.md)); RELEASING.md has the one-time signing and notarization setup.
+The icon is `assets/icon.svg`, drawn into `assets/icon.icns` by `npx electron assets/make-icon.cjs` when it changes.
 
 ## How it is put together
 

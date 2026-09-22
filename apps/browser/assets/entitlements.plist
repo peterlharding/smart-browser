@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The app's entitlements under the hardened runtime (ADR 0018): only what Electron needs,
+     JIT for V8. No camera, microphone, location or the rest: the browser refuses those to
+     pages anyway (ADR 0015), so the app has no use for them. The helper apps keep
+     @electron/osx-sign's own defaults. -->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+  </dict>
+</plist>

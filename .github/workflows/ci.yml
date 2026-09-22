@@ -154,3 +154,25 @@ jobs:
             test "$(secret-tool lookup service ci-probe)" = probe
             xvfb-run --auto-servernum make test-browser-e2e
           '
+
+  # The browser as it ships (ADR 0018): packaged on a Mac, signed ad hoc, and started from
+  # its archive. Signing with Developer ID and notarizing happen at release time on the
+  # maintainer's Mac, whose Keychain holds the key; they never run here.
+  package:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Install the browser's dependencies
+        run: make browser-install
+
+      # Electron 44 downloads its binary on first run rather than on install.
+      - name: Fetch Electron
+        run: npx --no-install electron --version
+
+      - name: Package, and start the package
+        run: make browser-package-check

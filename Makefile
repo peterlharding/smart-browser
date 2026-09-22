@@ -48,7 +48,7 @@ help:  ## Show this help
         migrate migrate-status migrate-revision migrate-autogen migrate-stamp \
         db-connect db-doctor db-bootstrap schema-drop rehash-urls \
         worker embed crawl-backfill crawl-status test-model \
-        browser-install browser-build browser-dev browser-check test-browser-e2e
+        browser-install browser-build browser-dev browser-package browser-package-check browser-release browser-check test-browser-e2e test-browser-e2e-packaged
 
 
 # --- the release gate -------------------------------------------------------
@@ -124,6 +124,16 @@ browser-build:  ## Build the browser into apps/browser/out
 browser-dev:  ## Build and run the browser
 	npm --workspace apps/browser run dev
 
+browser-package: browser-build  ## Package Smart-Browser.app, signed ad hoc, into apps/browser/dist (ADR 0018)
+	cd apps/browser && node package.mjs
+
+browser-package-check: browser-package  ## Package, then prove the package starts, serves its UI and quits
+	cd apps/browser && SMART_BROWSER_APP="$$PWD/dist/Smart-Browser-darwin-arm64/Smart-Browser.app" \
+	  npx playwright test -c playwright.packaged.config.ts
+
+browser-release: browser-build  ## Package, sign with Developer ID, notarize: the DMG and zip a release carries
+	cd apps/browser && node package.mjs --release
+
 browser-check:  ## Type-check the browser and run its unit tests
 	npm --workspace apps/browser run typecheck
 	npm --workspace apps/browser test
@@ -142,6 +152,19 @@ test-browser-e2e: browser-build  ## End-to-end: the browser against the API on <
 	      echo "REFUSING: that URL points at $$DB_NAME, your real database."; exit 1;; \
 	  esac; \
 	  cd apps/browser && TEST_DATABASE_URL="$$url" npx playwright test
+
+test-browser-e2e-packaged: browser-package  ## End-to-end, against the packaged Smart-Browser.app (ADR 0018)
+	@set -a; if [ -f ./.env ]; then . ./.env; fi; set +a; \
+	  DB_NAME="$${DB_NAME:-page_history}"; \
+	  url="$(TEST_DATABASE_URL)"; \
+	  if [ -z "$$url" ]; then \
+	    url="postgresql+psycopg://$$DB_USER:$$DB_PASSWORD@$$DB_HOST:$$DB_PORT/$${DB_NAME}_test"; \
+	  fi; \
+	  case "$$url" in \
+	    */$$DB_NAME|*/$$DB_NAME\?*) \
+	      echo "REFUSING: that URL points at $$DB_NAME, your real database."; exit 1;; \
+	  esac; \
+	  cd apps/browser && SMART_BROWSER_APP="$$PWD/dist/Smart-Browser-darwin-arm64/Smart-Browser.app" TEST_DATABASE_URL="$$url" npx playwright test
 
 # --- api --------------------------------------------------------------------
 
