@@ -142,8 +142,13 @@ and the save button shows what this browser knows. Where you have been is kept l
 recently closed tabs with ⇧⌘T, recent pages, a submenu per earlier day, Delete Browsing
 Data), and a history page laid out as Chrome's.
 
-Still to come in M5: the offline save queue, downloads, OAuth sign-in (with M1),
-packaging and signing, and auto-update. The tag sidebar is M6.
+**Offline save queue — 2026-09-22** ([ADR 0017](decisions/0017-offline-save-queue.md),
+sketched first in [`m5-offline-save-queue.md`](m5-offline-save-queue.md)). A save made
+while the API is away waits in `history.db` and is delivered when it answers; the save
+button shows it waiting, and File > Saves Waiting lists what is still to go.
+
+Still to come in M5: downloads, OAuth sign-in (with M1), packaging and signing, and
+auto-update. The tag sidebar is M6.
 
 **Possible enhancements** (not scheduled):
 
@@ -219,6 +224,7 @@ ADR 0002 chose a global vocabulary. Adding a per-user private namespace later is
 | 2026-09-21 | Crawl worker: one page at a time, 10-minute lease, trafilatura, private addresses refused, robots.txt not consulted | [ADR 0012](decisions/0012-crawl-worker.md) |
 | 2026-09-21 | Embeddings through fastembed, one vector per page from its opening 512 tokens, in its own process | [ADR 0013](decisions/0013-embeddings.md) |
 | 2026-09-21 | Tag names: no comma, whitespace or control character, no length limit; aliases resolve on every path | [ADR 0014](decisions/0014-tag-names.md) |
+| 2026-09-22 | Saves made while the API is away wait in history.db and are delivered when it answers | [ADR 0017](decisions/0017-offline-save-queue.md) |
 | 2026-09-22 | Browsing history is local; the browser contacts the API only when you act | [ADR 0016](decisions/0016-local-history-backend-on-action.md) |
 | 2026-09-21 | M5 moves ahead of M4, which waits on its open questions | this plan, M5 |
 | 2026-09-21 | Electron shell: TypeScript, Svelte, Vite and esbuild; overlay view; token in main only; first slice | [ADR 0015](decisions/0015-electron-shell.md) |
