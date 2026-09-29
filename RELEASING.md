@@ -180,7 +180,8 @@ release cannot be cut with an API that reports the wrong version.
 ## Proving auto-update, once
 
 Nothing automated can prove that Squirrel.Mac actually replaces the app: it needs two signed, notarized releases and the real service ([ADR 0019](doc/decisions/0019-auto-update.md)).
-Run this by hand once, after the first release published above a release that carries a zip, and record the result in that release's notes:
+Both releases must carry the update code, which arrived in 0.8.0, so the first pair that can prove anything is 0.8.0 and the release after it.
+Run this by hand once, and record the result in the newer release's notes:
 
 1. Install the older release from its DMG into `/Applications`, and open it.
 2. Publish the newer release, with both files attached.
