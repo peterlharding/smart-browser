@@ -60,8 +60,12 @@ test('nothing under test asks the update service', async ({ smart }) => {
   // feed set, the app does not know where it would ask.
   expect(await smart.app.evaluate(({ autoUpdater }) => autoUpdater.getFeedURL())).toBe('');
   expect(await smart.app.evaluate(({ app }) => app.isPackaged)).toBe(Boolean(PACKAGED_APP()));
-  expect(await smart.menuItem('check-for-updates')).toMatchObject({ enabled: false });
-  expect(await smart.menuItem('restart-to-update')).toBeNull();
+  // Those items live in the application menu, which only macOS has; the browser is
+  // packaged for macOS alone, so on Linux there is nothing to update and nothing to show.
+  if (process.platform === 'darwin') {
+    expect(await smart.menuItem('check-for-updates')).toMatchObject({ enabled: false });
+    expect(await smart.menuItem('restart-to-update')).toBeNull();
+  }
 });
 
 test('settings test the connection, then keep the token', async ({ smart }) => {
