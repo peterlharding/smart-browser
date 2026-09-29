@@ -153,8 +153,13 @@ signed, notarized `Smart-Browser.app`, with a DMG and a zip for each release; a 
 from the repo has its own `Smart-Browser Dev` profile. Notarizing waits on storing the
 credentials once, as RELEASING.md describes.
 
-Still to come in M5: auto-update (`update-electron-app`, from the zip each release now
-carries), downloads, and OAuth sign-in (with M1). The tag sidebar is M6.
+**Auto-update — 2026-09-29** ([ADR 0019](decisions/0019-auto-update.md), sketched first in
+[`m5-auto-update.md`](m5-auto-update.md)). The browser checks `update.electronjs.org` at
+launch and every six hours, downloads the zip each release carries since 0.7.0, and says so
+in the menu and the toolbar without interrupting; Settings can turn the checking off.
+**Unproven until the recipe in `RELEASING.md` is run by hand against a real release.**
+
+Still to come in M5: downloads, and OAuth sign-in (with M1). The tag sidebar is M6.
 
 **Possible enhancements** (not scheduled):
 
@@ -230,6 +235,7 @@ ADR 0002 chose a global vocabulary. Adding a per-user private namespace later is
 | 2026-09-21 | Crawl worker: one page at a time, 10-minute lease, trafilatura, private addresses refused, robots.txt not consulted | [ADR 0012](decisions/0012-crawl-worker.md) |
 | 2026-09-21 | Embeddings through fastembed, one vector per page from its opening 512 tokens, in its own process | [ADR 0013](decisions/0013-embeddings.md) |
 | 2026-09-21 | Tag names: no comma, whitespace or control character, no length limit; aliases resolve on every path | [ADR 0014](decisions/0014-tag-names.md) |
+| 2026-09-29 | The browser updates itself from update.electronjs.org, quietly, with a switch in Settings | [ADR 0019](decisions/0019-auto-update.md) |
 | 2026-09-22 | The browser ships as a signed, notarized Smart-Browser.app, packaged by Electron's own tools; development has its own profile | [ADR 0018](decisions/0018-packaging-and-signing.md) |
 | 2026-09-22 | Saves made while the API is away wait in history.db and are delivered when it answers | [ADR 0017](decisions/0017-offline-save-queue.md) |
 | 2026-09-22 | Browsing history is local; the browser contacts the API only when you act | [ADR 0016](decisions/0016-local-history-backend-on-action.md) |
