@@ -48,19 +48,6 @@ make crawl-status   # jobs by state, latest errors
 make schema-drop CONFIRM=yes
 ```
 
-## Layout
-
-```text
-apps/api/          FastAPI + SQLAlchemy 2.0 + psycopg 3.  Its own uv project.
-apps/extension/    MV3 Chrome extension.  Plain JS, node --test, no build step.
-apps/browser/      Electron shell (M5, ADR 0015). TypeScript, Svelte, Vite + esbuild.
-                   An npm workspace: `make browser-install` once.
-db/                alembic.ini, migrations/, schema/.  Its own uv project: migrating
-                   needs alembic and psycopg, not the API package.
-doc/               plan, architecture, ADRs, NOTES.
-packages/shared-types/openapi.json   generated; `make api-openapi`.
-```
-
 ## Schema conventions
 
 - **The DDL is SQL files**, one per object, in `db/schema/create/`. Each Alembic revision
@@ -140,14 +127,8 @@ say so — that is where most of this project's real defects have lived.
 
 ## Current state
 
-M0 and M3 are done. Revision `0002` added `bookmark_content` and `crawl_job`, the save
-path enqueues inside its own transaction (ADR 0009), the crawl worker drains it (ADR 0012:
-`make worker`, `make crawl-backfill`, `make crawl-status`), and a separate embedding pass
-turns its text into vectors (ADR 0013: `make embed`). `fetch.py` is the only module that
-touches the network and `embedder.FastembedModel` the only one that loads the model; both
-are parameters, so tests use fakes. The real model is `make test-model`, opt-in and run in
-CI. **Next: M4**, blocked on the open questions in `doc/plan.md` (which LLM, tag
-hierarchy).
+`doc/plan.md` is the record of what is done, what is next, and what is still open; it is
+kept current with each change, and this file does not repeat it.
 
 Titles (ADR 0010, revision `0003`): `title_override` is what you typed (PATCH only),
 `user_bookmark.saved_title` is what the client saw (POST), `bookmark.title` is what the
