@@ -9,6 +9,24 @@ Add entries under `## [Unreleased]` as part of each change, not at release time.
 
 ## [Unreleased]
 
+### Added
+
+- **The browser updates itself, quietly** ([ADR 0019](doc/decisions/0019-auto-update.md)).
+  It asks `update.electronjs.org` for the latest release at launch and every six hours,
+  downloads it in the background, and says so without interrupting anything: the first item
+  of the Smart-Browser menu becomes **Restart to Update to `<version>`**, and the toolbar's
+  settings button carries a dot. Ignore both and the update is applied at the next launch
+  anyway, which is how Squirrel.Mac works.
+  - **Check for Updates Now** in the Smart-Browser menu, whether or not automatic checks are on.
+  - **Settings: "Check for updates automatically"**, on by default, saying what a check sends
+    (this version, macOS, the processor) and to whom. Nothing about pages is sent, and turning
+    it off stops the checks at once.
+  - A build run from the repo never checks, and neither does one under test
+    (`SMART_BROWSER_NO_UPDATE`): the end-to-end suite proves the app has no update feed set.
+  - A failed check is logged and left for the next one.
+  - **Unproven until a real release proves it**: nothing automated can show that the app is
+    actually replaced. `RELEASING.md` has the recipe to run once by hand.
+
 ## [0.7.0] - 2026-09-25
 
 See [release_notes/v0.7.0.md](release_notes/v0.7.0.md) for details.

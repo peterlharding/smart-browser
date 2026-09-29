@@ -5,7 +5,7 @@
  */
 
 import type { Bookmark } from '../../src/shared/ipc';
-import { API, BrowserApp, SITE, TOKEN, expect, expectFocused, recordApi, test } from './fixtures';
+import { API, BrowserApp, PACKAGED_APP, SITE, TOKEN, expect, expectFocused, recordApi, test } from './fixtures';
 
 async function lookup(url: string): Promise<Bookmark> {
   const response = await fetch(`${API()}/api/v1/bookmarks/lookup?url=${encodeURIComponent(url)}`, {
@@ -52,6 +52,16 @@ test('an unconfigured browser sends the save button to settings', async ({ smart
   await expect(save).toHaveAttribute('title', 'Connect to your bookmarks API in Settings');
   await save.click();
   await expect((await smart.overlay()).getByRole('heading', { name: 'Settings' })).toBeVisible();
+});
+
+test('nothing under test asks the update service', async ({ smart }) => {
+  // A build run from the repo could not replace itself; a packaged one under test must
+  // reach no service either, so both are off rather than merely quiet (ADR 0019). With no
+  // feed set, the app does not know where it would ask.
+  expect(await smart.app.evaluate(({ autoUpdater }) => autoUpdater.getFeedURL())).toBe('');
+  expect(await smart.app.evaluate(({ app }) => app.isPackaged)).toBe(Boolean(PACKAGED_APP()));
+  expect(await smart.menuItem('check-for-updates')).toMatchObject({ enabled: false });
+  expect(await smart.menuItem('restart-to-update')).toBeNull();
 });
 
 test('settings test the connection, then keep the token', async ({ smart }) => {

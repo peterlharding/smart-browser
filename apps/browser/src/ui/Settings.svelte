@@ -15,6 +15,8 @@
   let token = $state('');
   // svelte-ignore state_referenced_locally
   let searchEngine: SearchEngine = $state(settings.searchEngine);
+  // svelte-ignore state_referenced_locally
+  let autoUpdate = $state(settings.autoUpdate);
   let report: ConnectionReport | null = $state(null);
   let first: HTMLInputElement | undefined = $state();
 
@@ -33,7 +35,7 @@
 
   function input(): SettingsInput {
     // A blank token field keeps the stored token rather than removing it.
-    return token.trim() ? { apiUrl, token, searchEngine } : { apiUrl, searchEngine };
+    return token.trim() ? { apiUrl, token, searchEngine, autoUpdate } : { apiUrl, searchEngine, autoUpdate };
   }
 
   async function test() {
@@ -81,6 +83,20 @@
     </select>
   </label>
 
+  {#if settings.updates}
+    <label class="switch">
+      <input type="checkbox" bind:checked={autoUpdate} />
+      <span>
+        <strong>Check for updates automatically</strong>
+        <small>
+          At launch, then every six hours, this browser asks update.electronjs.org whether a
+          newer release exists. It sends this version, macOS and the processor, and nothing
+          about the pages you visit.
+        </small>
+      </span>
+    </label>
+  {/if}
+
   {#if report}
     <p class="report" class:ok={report.ok && report.compatible} class:bad={!report.ok || !report.compatible} role="status">
       {#if report.ok}
@@ -106,6 +122,40 @@
 </form>
 
 <style>
+  .switch {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .switch input {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 2px 0 0;
+    accent-color: var(--accent);
+  }
+
+  /* `label span` above styles a field's label; this one holds a sentence, not a label. */
+  .switch span {
+    display: grid;
+    gap: 3px;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 400;
+  }
+
+  .switch strong {
+    font-weight: 500;
+  }
+
+  .switch small {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.4;
+  }
+
   h1 {
     margin: 0 0 14px;
     font-size: 15px;

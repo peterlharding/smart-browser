@@ -63,6 +63,8 @@ export interface ChromeState {
   canGoBack: boolean;
   canGoForward: boolean;
   saved: SavedState;
+  /** An update is downloaded and waiting for a restart (ADR 0019). */
+  updateReady: boolean;
   /** Set once to focus the omnibox: a new tab, or ⌘L. Increments so repeats register. */
   focusOmnibox: number;
 }
@@ -99,6 +101,10 @@ export interface SettingsView {
   hasToken: boolean;
   searchEngine: SearchEngine;
   tokenStorage: 'keychain' | 'unavailable';
+  /** Check for updates automatically (ADR 0019). */
+  autoUpdate: boolean;
+  /** Whether this build can update itself at all: a packaged one, not under test. */
+  updates: boolean;
 }
 
 export type OverlayState = SaveSheet | SettingsView | WaitingView;
@@ -108,6 +114,7 @@ export interface SettingsInput {
   /** Omitted keeps the stored token; an empty string removes it. */
   token?: string;
   searchEngine: SearchEngine;
+  autoUpdate: boolean;
 }
 
 export type ConnectionReport =

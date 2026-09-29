@@ -21,9 +21,23 @@ test('the packaged app shows its own pages from inside its archive, and quits', 
     await expect(history.getByRole('heading', { name: 'History', level: 1 })).toBeVisible();
     await expect(history.getByText('Pages you visit appear here')).toBeVisible();
 
+    // Updates are off under test, so the app asked the service nothing: with no feed set,
+    // it does not know where it would ask (ADR 0019).
+    expect(await smart.app.evaluate(({ autoUpdater }) => autoUpdater.getFeedURL())).toBe('');
+    expect(await smart.menuItem('check-for-updates')).toMatchObject({ enabled: false });
+    expect(await smart.menuItem('restart-to-update')).toBeNull();
+
     await smart.menu('settings');
-    await expect((await smart.overlay()).getByRole('heading', { name: 'Settings' })).toBeVisible();
-    await smart.snapshot('30-packaged');
+    const settings = await smart.overlay();
+    await expect(settings.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    // A packaged app offers the switch, on by default, and still asks the service nothing.
+    await expect(settings.getByLabel('Check for updates automatically')).toBeChecked();
+    await settings.getByLabel('Check for updates automatically').uncheck();
+    await settings.getByRole('button', { name: 'Save' }).click();
+    await expect.poll(() => smart.overlayOpen()).toBe(false);
+    expect(await smart.app.evaluate(({ autoUpdater }) => autoUpdater.getFeedURL())).toBe('');
+    await smart.menu('settings');
+    await smart.snapshot('30-packaged-settings');
   } finally {
     await smart.dispose(); // fails if the app does not quit
   }

@@ -16,6 +16,7 @@
     canGoBack: false,
     canGoForward: false,
     saved: { kind: 'not-web' },
+    updateReady: false,
     focusOmnibox: 0,
   });
   let typed = $state('');
@@ -213,8 +214,15 @@
         {@html icons.bookmark}
       {/if}
     </button>
-    <button class="icon" title="Settings (⌘,)" aria-label="Settings" onclick={() => smart.openSettings()}>
+    <button
+      class="icon settings"
+      class:update={chrome.updateReady}
+      title={chrome.updateReady ? 'Settings (⌘,) · an update is ready: restart from the Smart-Browser menu' : 'Settings (⌘,)'}
+      aria-label={chrome.updateReady ? 'Settings; an update is ready' : 'Settings'}
+      onclick={() => smart.openSettings()}
+    >
       {@html icons.settings}
+      {#if chrome.updateReady}<span class="dot" aria-hidden="true"></span>{/if}
     </button>
   </div>
 </div>
@@ -440,6 +448,19 @@
 
   .save.problem {
     color: var(--warn);
+  }
+
+  /* An update downloaded and waiting for a restart (ADR 0019): said quietly, here and in
+     the Smart-Browser menu, since it is applied at the next launch either way. */
+  .dot {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 8px;
+    height: 8px;
+    border: 1.5px solid var(--toolbar);
+    border-radius: 50%;
+    background: var(--accent);
   }
 
   .count {

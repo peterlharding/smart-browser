@@ -63,7 +63,8 @@ export class BrowserApp {
         ...(packaged && process.platform === 'darwin' ? PACKAGED_MAC_SWITCHES : []),
         ...(packaged ? [] : ['.']),
       ],
-      env: { ...process.env, SMART_BROWSER_USER_DATA: profile },
+      // No test reaches the update service (ADR 0019); a packaged app would otherwise ask.
+      env: { ...process.env, SMART_BROWSER_USER_DATA: profile, SMART_BROWSER_NO_UPDATE: '1' },
     });
     const browser = new BrowserApp(app, profile);
     const record = (chunk: Buffer) => browser.output.push(String(chunk));

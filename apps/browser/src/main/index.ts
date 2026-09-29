@@ -3,7 +3,7 @@
  * lives under (ADR 0015).
  */
 
-import { BrowserWindow, Menu, app, net, powerMonitor, protocol, safeStorage, session } from 'electron';
+import { BrowserWindow, Menu, app, autoUpdater, net, powerMonitor, protocol, safeStorage, session } from 'electron';
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -14,6 +14,7 @@ import { registerIpc } from './ipc';
 import { buildMenu } from './menu';
 import { SaveQueue } from './queue';
 import { SettingsStore, type Secrets } from './settings';
+import { Updates, type Updater } from './updates';
 
 app.setName('Smart-Browser');
 // The profile follows the build (ADR 0018): the installed app browses in "Smart-Browser",
@@ -47,6 +48,20 @@ let settings: SettingsStore;
 let history: History;
 let connection: Connection;
 let queue: SaveQueue;
+let updates: Updates;
+
+/** The browser's GitHub repository: whose latest release update.electronjs.org serves. */
+const REPO = 'peterlharding/smart-browser';
+
+// Electron's own updater, behind the narrow surface updates.ts uses (ADR 0019).
+const updater: Updater = {
+  setFeedURL: (feed) => autoUpdater.setFeedURL(feed),
+  checkForUpdates: () => autoUpdater.checkForUpdates(),
+  quitAndInstall: () => autoUpdater.quitAndInstall(),
+  onDownloaded: (listener) =>
+    autoUpdater.on('update-downloaded', (_event, _notes, name) => listener(name)),
+  onError: (listener) => autoUpdater.on('error', listener),
+};
 
 function current(): Browser | null {
   const focused = BrowserWindow.getFocusedWindow();
@@ -64,6 +79,7 @@ function openWindow(): Browser {
     history,
     connection,
     queue,
+    updates,
   );
   browsers.add(browser);
   browser.window.on('closed', () => browsers.delete(browser));
@@ -79,7 +95,7 @@ let quitting = false;
 function buildApplicationMenu(): void {
   menuTimer = null;
   menuBuiltAt = Date.now();
-  Menu.setApplicationMenu(buildMenu(current, openWindow, history));
+  Menu.setApplicationMenu(buildMenu(current, openWindow, history, updates));
 }
 
 function rebuildMenuSoon(): void {
@@ -112,10 +128,32 @@ void app.whenReady().then(() => {
   queue = new SaveQueue(history, connection);
   queue.start();
   powerMonitor.on('resume', () => void queue.flush()); // the Mac woke: the API may be back
+
+  // Updating itself (ADR 0019). A build run from the repo cannot replace itself, and the
+  // tests must reach no service, so both are off rather than merely quiet.
+  updates = new Updates(
+    updater,
+    {
+      repo: REPO,
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+      packaged: app.isPackaged,
+      underTest: Boolean(process.env.SMART_BROWSER_NO_UPDATE),
+      automatic: settings.autoUpdate,
+    },
+    () => {
+      rebuildMenuSoon();
+      for (const browser of browsers) browser.updatesChanged();
+    },
+    (message) => console.log(`[updates] ${message}`),
+  );
+  updates.start();
   // Nothing that reads history.db may run once it is closed: a menu rebuild due a moment
   // after a page's favicon arrived threw, and Electron's error dialog held the app open.
   app.on('will-quit', () => {
     quitting = true;
+    updates.stop();
     if (menuTimer) clearTimeout(menuTimer);
     menuTimer = null;
     queue.stop();

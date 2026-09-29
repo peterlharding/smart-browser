@@ -158,7 +158,8 @@ release cannot be cut with an API that reports the wrong version.
     Notarizing takes a few minutes each for the app and the DMG.
     It needs the one-time setup under **Signing and notarization** below, and stops before doing anything slow if either part is missing.
 
-11. **Publish the GitHub release** from the tag, with the release notes as the body and the DMG and zip attached:
+11. **Publish the GitHub release** from the tag, with the release notes as the body and the DMG and zip attached.
+    The zip is what installed copies update from ([ADR 0019](doc/decisions/0019-auto-update.md)): a release published without it is invisible to the update service, which then reports no update rather than failing, so check both files are listed afterwards.
 
     ```sh
     gh release create v<version> --title "Smart-Browser <version>" \
@@ -175,6 +176,20 @@ release cannot be cut with an API that reports the wrong version.
 
     If the previous version was tagged but never published, readers of this release have not seen its notes.
     Publish the two files together, this release's first, with relative links made absolute: 0.2.1's release body carries 0.2.0's notes this way.
+
+## Proving auto-update, once
+
+Nothing automated can prove that Squirrel.Mac actually replaces the app: it needs two signed, notarized releases and the real service ([ADR 0019](doc/decisions/0019-auto-update.md)).
+Run this by hand once, after the first release published above a release that carries a zip, and record the result in that release's notes:
+
+1. Install the older release from its DMG into `/Applications`, and open it.
+2. Publish the newer release, with both files attached.
+3. Leave the older app running, or reopen it. Within six hours of launch it checks; **Check for Updates Now** in the Smart-Browser menu does it immediately.
+4. The first item of the Smart-Browser menu becomes **Restart to Update to `<version>`**, and the toolbar's settings button carries a dot.
+5. Choose it. The app restarts, and the About panel and `Smart-Browser.app/Contents/Info.plist` report the new version.
+6. If it does not update, the app's log says why: run it from a terminal (`/Applications/Smart-Browser.app/Contents/MacOS/Smart-Browser`) and look for `[updates]` lines.
+
+Until this has been done once, treat auto-update as unproven and say so in the release notes.
 
 ## Signing and notarization
 

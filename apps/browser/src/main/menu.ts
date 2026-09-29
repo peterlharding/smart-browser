@@ -11,6 +11,7 @@ import { Menu, app, nativeImage, type MenuItemConstructorOptions, type NativeIma
 
 import type { Browser } from './browser';
 import { dayOf, type History } from './history';
+import type { Updates } from './updates';
 
 const RECENT_PAGES = 15;
 const EARLIER_DAYS = 7;
@@ -23,6 +24,7 @@ export function buildMenu(
   current: () => Browser | null,
   newWindow: () => Browser,
   history: History,
+  updates: Updates,
 ): Menu {
   const on = (action: (browser: Browser) => void) => () => {
     const browser = current();
@@ -46,7 +48,16 @@ export function buildMenu(
           {
             label: app.name,
             submenu: [
+              // An update waiting says so here, above everything else, and nowhere noisier
+              // (ADR 0019): ignoring it costs nothing, since it is applied at the next launch.
+              ...updateItems(updates),
               { role: 'about' },
+              {
+                id: 'check-for-updates',
+                label: 'Check for Updates Now',
+                enabled: updates.current().kind !== 'off',
+                click: () => updates.checkNow(),
+              },
               { type: 'separator' },
               { id: 'settings', label: 'Settings…', accelerator: 'Cmd+,', click: on((b) => b.openSettings()) },
               { type: 'separator' },
@@ -253,4 +264,14 @@ function savesWaiting(
   const count = history.pendingSaves().length;
   if (!count) return [];
   return [{ id: 'saves-waiting', label: `Saves Waiting (${count})…`, click: on((b) => b.showWaiting()) }];
+}
+
+/** Shown only while an update is downloaded and waiting for a restart (ADR 0019). */
+function updateItems(updates: Updates): MenuItemConstructorOptions[] {
+  const state = updates.current();
+  if (state.kind !== 'ready') return [];
+  return [
+    { id: 'restart-to-update', label: `Restart to Update to ${state.version}`, click: () => updates.restartToInstall() },
+    { type: 'separator' },
+  ];
 }

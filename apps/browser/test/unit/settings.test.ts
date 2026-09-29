@@ -25,7 +25,7 @@ describe('SettingsStore', () => {
 
   it('keeps the token encrypted, never in the clear', () => {
     const path = file();
-    new SettingsStore(path, secrets()).update({ apiUrl: 'http://api.test/', token: 's3cret', searchEngine: 'google' });
+    new SettingsStore(path, secrets()).update({ apiUrl: 'http://api.test/', token: 's3cret', searchEngine: 'google', autoUpdate: true });
     expect(readFileSync(path, 'utf8')).not.toContain('s3cret');
 
     const reopened = new SettingsStore(path, secrets());
@@ -34,16 +34,16 @@ describe('SettingsStore', () => {
 
   it('keeps the stored token when none is given, and removes it when given an empty one', () => {
     const store = new SettingsStore(file(), secrets());
-    store.update({ apiUrl: 'http://api.test', token: 's3cret', searchEngine: 'duckduckgo' });
-    store.update({ apiUrl: 'http://other.test', searchEngine: 'duckduckgo' });
+    store.update({ apiUrl: 'http://api.test', token: 's3cret', searchEngine: 'duckduckgo', autoUpdate: true });
+    store.update({ apiUrl: 'http://other.test', searchEngine: 'duckduckgo', autoUpdate: true });
     expect(store.token()).toBe('s3cret');
-    store.update({ apiUrl: 'http://other.test', token: '  ', searchEngine: 'duckduckgo' });
+    store.update({ apiUrl: 'http://other.test', token: '  ', searchEngine: 'duckduckgo', autoUpdate: true });
     expect(store.hasToken).toBe(false);
   });
 
   it('refuses to keep a token where there is no secret store, rather than write it plain', () => {
     const store = new SettingsStore(file(), secrets(false));
-    expect(() => store.update({ apiUrl: 'x', token: 's3cret', searchEngine: 'duckduckgo' })).toThrow(
+    expect(() => store.update({ apiUrl: 'x', token: 's3cret', searchEngine: 'duckduckgo', autoUpdate: true })).toThrow(
       /no secret store \(backend: basic_text\)/,
     );
     expect(store.hasToken).toBe(false);

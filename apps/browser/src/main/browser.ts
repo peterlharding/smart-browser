@@ -38,6 +38,7 @@ import { resolveInput } from './omnibox';
 import type { SaveQueue } from './queue';
 import { readSession, writeSession } from './session';
 import type { SettingsStore } from './settings';
+import type { Updates } from './updates';
 import { Tab, lockToAppFiles, type Navigation, type TabEnvironment } from './tabs';
 import { hostOf, historyUrl, isRecordable, isWeb, pageKey } from './urls';
 
@@ -72,6 +73,7 @@ export class Browser {
     private readonly history: History,
     private readonly connection: Connection,
     private readonly queue: SaveQueue,
+    private readonly updates: Updates,
   ) {
     this.window = new BrowserWindow({
       width: 1280,
@@ -319,6 +321,7 @@ export class Browser {
       canGoBack: tab?.canGoBack ?? false,
       canGoForward: tab?.canGoForward ?? false,
       saved: this.savedState(),
+      updateReady: this.updates.current().kind === 'ready',
       focusOmnibox: this.focusOmnibox,
     };
     this.window.webContents.send(Channels.chrome.state, state);
@@ -427,12 +430,19 @@ export class Browser {
       hasToken: this.settings.hasToken,
       searchEngine: this.settings.searchEngine,
       tokenStorage: this.settings.tokenStorageAvailable ? 'keychain' : 'unavailable',
+      autoUpdate: this.settings.autoUpdate,
+      updates: this.updates.available(),
     });
   }
 
   /** File > Saves Waiting: what is still to be delivered, to retry or drop. */
   showWaiting(): void {
     this.showOverlay({ mode: 'waiting', saves: this.history.pendingSaves() });
+  }
+
+  /** An update was found, or the switch changed: the toolbar follows (ADR 0019). */
+  updatesChanged(): void {
+    this.pushChrome();
   }
 
   /** The system is back online: anything waiting may go now. */
@@ -517,6 +527,7 @@ export class Browser {
    */
   saveSettings(input: SettingsInput): void {
     this.settings.update(input);
+    this.updates.setAutomatic(this.settings.autoUpdate);
     this.connection.reset();
     this.problem = null;
     this.closeOverlay();

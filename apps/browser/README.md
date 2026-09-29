@@ -23,6 +23,9 @@ The token is kept in the Keychain through Electron's `safeStorage`, and never sh
 Run from the repo, it uses its own profile, `~/Library/Application Support/Smart-Browser Dev`, so experiments never touch the installed app's history and settings.
 `SMART_BROWSER_USER_DATA=/some/dir` names another, as the tests do.
 
+A packaged build updates itself from `update.electronjs.org` ([ADR 0019](../../doc/decisions/0019-auto-update.md)): at launch, then every six hours, with Settings able to turn it off.
+A build run from the repo never checks, and neither does one under test (`SMART_BROWSER_NO_UPDATE=1`).
+
 ## Packaging it
 
 ```sh
@@ -38,6 +41,7 @@ The icon is `assets/icon.svg`, drawn into `assets/icon.icns` by `npx electron as
 
 ```text
 src/main/      the main process: the window and its views, tabs, IPC, the API client, settings,
+               updates (updates.ts, Electron's autoUpdater against update.electronjs.org),
                history (history.ts, SQLite through node:sqlite) and the menu built from it,
                the connection to the API (connection.ts) and the save queue (queue.ts)
 src/preload/   one bridge per kind of view, one function per request, never ipcRenderer

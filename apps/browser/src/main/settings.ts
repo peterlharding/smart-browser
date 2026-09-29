@@ -24,9 +24,11 @@ interface Stored {
   apiUrl: string;
   searchEngine: SearchEngine;
   token: string | null; // base64 of the encrypted token
+  /** Check for updates automatically (ADR 0019). On unless you turn it off. */
+  autoUpdate: boolean;
 }
 
-const DEFAULTS: Stored = { apiUrl: '', searchEngine: 'duckduckgo', token: null };
+const DEFAULTS: Stored = { apiUrl: '', searchEngine: 'duckduckgo', token: null, autoUpdate: true };
 const ENGINES: readonly SearchEngine[] = ['duckduckgo', 'google', 'bing'];
 
 export class SettingsStore {
@@ -45,6 +47,10 @@ export class SettingsStore {
 
   get searchEngine(): SearchEngine {
     return this.stored.searchEngine;
+  }
+
+  get autoUpdate(): boolean {
+    return this.stored.autoUpdate;
   }
 
   get hasToken(): boolean {
@@ -70,6 +76,7 @@ export class SettingsStore {
       apiUrl: input.apiUrl.trim().replace(/\/+$/, ''),
       searchEngine: ENGINES.includes(input.searchEngine) ? input.searchEngine : 'duckduckgo',
       token: this.stored.token,
+      autoUpdate: input.autoUpdate !== false,
     };
     if (input.token !== undefined) {
       const token = input.token.trim();
@@ -98,6 +105,7 @@ function read(file: string): Stored {
         ? (raw.searchEngine as SearchEngine)
         : DEFAULTS.searchEngine,
       token: typeof raw.token === 'string' ? raw.token : null,
+      autoUpdate: raw.autoUpdate !== false,
     };
   } catch {
     return { ...DEFAULTS };
